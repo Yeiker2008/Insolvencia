@@ -1,0 +1,114 @@
+Timestamp,Modulo,Accion,Usuario
+2026-09-30 16:38:19,ONBOARDING,Bóveda aperturada para cc: 1.060.040.547 (YEIKER STEVEN CARDONA RAMOS),
+2026-09-30 16:44:52,ONBOARDING,Bóveda aperturada para cc: 1.000.365.636 (MARIA PAZ ZEA),
+2026-09-30 16:47:25,DOCUMENTOS,YEIKER STEVEN CARDONA RAMOS: Documento 1. CÉDULA subido.,
+2026-09-30 16:47:28,DOCUMENTOS,YEIKER STEVEN CARDONA RAMOS: Documento 2. CERTIFICADO REDAM subido.,
+2026-09-30 16:47:31,DOCUMENTOS,YEIKER STEVEN CARDONA RAMOS: Documento 3. DATOS DE DATACRÉDITO subido.,
+2026-09-30 16:47:34,DOCUMENTOS,YEIKER STEVEN CARDONA RAMOS: Documento 4. CERTIFICADO SIMIT subido.,
+2026-09-30 16:47:37,DOCUMENTOS,YEIKER STEVEN CARDONA RAMOS: Documento 5. CERTIFICADO RAMA subido.,
+2026-09-30 16:47:40,DOCUMENTOS,YEIKER STEVEN CARDONA RAMOS: Documento 6. CERTIFICADO RUNT subido.,
+2026-09-30 16:47:43,DOCUMENTOS,YEIKER STEVEN CARDONA RAMOS: Documento 7. CERTIFICADO TRADICIÓN Y LIBERTAD subido.,
+2026-09-30 16:47:46,DOCUMENTOS,YEIKER STEVEN CARDONA RAMOS: Documento 8. CERTIFICADO RUES subido.,
+2026-09-30 16:47:46,MOTOR CONTRACTUAL,Expediente 1.060.040.547 avanzó a Fase 1,
+2026-09-30 16:49:05,MOTOR CONTRACTUAL,Expediente 1.060.040.547 avanzó a Fase 2,
+2026-09-30 16:49:05,MOTOR CONTRACTUAL,Documentos legales generados para YEIKER STEVEN CARDONA RAMOS,
+2026-09-30 16:51:12,MOTOR CONTRACTUAL,Expediente 1.060.040.547 avanzó a Fase 3,
+2026-09-30 16:51:22,MOTOR CONTRACTUAL,Expediente 1.060.040.547 avanzó a Fase 4,
+2026-09-30 16:52:23,JUDICIAL,Actuación Auto Admisorio registrada para YEIKER STEVEN CARDONA RAMOS,
+2026-09-30 16:55:02,JUDICIAL,Actuación Otro registrada para YEIKER STEVEN CARDONA RAMOS,
+2026-09-30 16:56:07,TESORERÍA,Abono de $10000000 registrado para YEIKER STEVEN CARDONA RAMOS,
+2026-09-30 16:58:02,SEGURIDAD,Expediente 1.000.365.636 - MARIA PAZ ZEA enviado a cuarentena.,
+2026-09-30 17:08:44,AUTH,Usuario admin inició sesión exitosamente.,admin
+2026-09-30 17:09:50,SEGURIDAD,Creado usuario Yeiker  con rol Abogado / Operativo,admin
+2026-09-30 17:10:16,SEGURIDAD,Creado usuario Maria Paz con rol Auxiliar Jurídico,admin
+2026-09-30 17:10:50,AUTH,Usuario admin cerró sesión.,admin
+2026-09-30 17:11:11,AUTH,Usuario admin inició sesión exitosamente.,admin
+2026-09-30 17:15:24,AUTH,Usuario admin inició sesión.,admin
+2026-09-30 17:16:08,SEGURIDAD,Creado usuario Arturo con rol Auxiliar Jurídico,admin
+2026-09-30 17:16:24,SEGURIDAD,Contraseña actualizada para el usuario Yeiker ,admin
+2026-09-30 17:16:29,SEGURIDAD,Usuario Maria Paz eliminado del sistema.,admin
+2026-09-30 17:18:25,AUTH,Usuario admin cerró sesión.,admin
+2026-09-30 17:18:41,AUTH,Usuario Arturo inició sesión.,Arturo
+2026-09-30 17:31:00,AUTH,Usuario Arturo cerró sesión.,Arturo
+2026-09-30 17:34:04,AUTH,Usuario admin inició sesión.,admin
+2026-09-30 17:39:56,AUTH,Usuario admin inició sesión.,admin
+2026-09-30 17:41:33,VENCIMIENTOS,Plazo programado para YEIKER STEVEN CARDONA RAMOS (BOGOTÁ DC),admin
+2026-09-30 17:41:55,AUTH,Usuario admin cerró sesión.,admin
+2026-09-30 17:42:16,AUTH,Usuario Arturo inició sesión.,Arturo
+2026-09-30 17:49:21,AUTH,Usuario admin inició sesión.,admin
+2026-09-30 17:50:38,AUTH,Usuario admin cerró sesión.,admin
+2026-09-30 17:50:47,AUTH,Usuario Arturo inició sesión.,Arturo
+2026-09-30 17:51:03,AUTH,Usuario Arturo cerró sesión.,Arturo
+2026-09-30 17:51:09,AUTH,Usuario admin inició sesión.,admin
+2026-09-30 17:55:17,AUTH,Usuario admin inició sesión.,admin
+2026-09-30 17:55:41,AUTH,Usuario admin inició sesión.,admin
+2026-09-30 17:57:44,AUTH,Usuario admin inició sesión.,admin
+2026-09-30 17:59:38,TÉRMINOS,Plazo programado para YEIKER STEVEN CARDONA RAMOS (AUTO ),admin
+2026-09-30 17:59:47,TÉRMINOS,Plazo programado para YEIKER STEVEN CARDONA RAMOS (AUTO ),admin
+2026-09-30 18:00:02,TÉRMINOS,Plazo programado para YEIKER STEVEN CARDONA RAMOS (AUTO ),admin
+2026-09-30 18:00:35,AUTH,Usuario admin cerró sesión.,admin
+2026-09-30 18:00:52,AUTH,Usuario Arturo inició sesión.,Arturo
+2026-09-30 18:06:48,AUTH,Usuario admin inició sesión.,admin
+2026-09-30 18:07:17,AUTH,Usuario admin inició sesión.,admin
+2026-09-30 18:08:33,AUTH,Usuario admin inició sesión.,admin
+2026-09-30 18:10:37,AUTH,Usuario admin inició sesión.,admin
+2026-09-30 18:15:43,AGENDA,Cita programada con YEIKER STEVEN CARDONA RAMOS para 2026-09-30 08:00:00,admin
+2026-09-30 18:25:39,AUTH,Usuario admin cerró sesión.,admin
+2026-09-30 18:25:56,AUTH,Usuario admin inició sesión.,admin
+2026-09-30 18:27:44,EXPEDIENTES,Expediente abierto para MARIA FERNANDA AYALA PEREZ,admin
+2026-09-30 18:34:57,DOCS,Subido 1. CÉDULA para MARIA FERNANDA AYALA PEREZ,admin
+2026-09-30 18:35:02,DOCS,Subido 2. CERTIFICADO REDAM para MARIA FERNANDA AYALA PEREZ,admin
+2026-09-30 18:35:06,DOCS,Subido 3. DATOS DE DATACRÉDITO para MARIA FERNANDA AYALA PEREZ,admin
+2026-09-30 18:35:11,DOCS,Subido 4. CERTIFICADO SIMIT para MARIA FERNANDA AYALA PEREZ,admin
+2026-09-30 18:35:16,DOCS,Subido 5. CERTIFICADO RAMA para MARIA FERNANDA AYALA PEREZ,admin
+2026-09-30 18:35:20,DOCS,Subido 6. CERTIFICADO RUNT para MARIA FERNANDA AYALA PEREZ,admin
+2026-09-30 18:35:24,DOCS,Subido 7. CERTIFICADO TRADICIÓN Y LIBERTAD para MARIA FERNANDA AYALA PEREZ,admin
+2026-09-30 18:35:29,DOCS,Subido 8. CERTIFICADO RUES para MARIA FERNANDA AYALA PEREZ,admin
+2026-09-30 18:37:04,CONTRATOS,Generados contratos para MARIA FERNANDA AYALA PEREZ,admin
+2026-09-30 18:40:16,AUTH,Usuario admin inició sesión.,admin
+2026-09-30 18:58:32,AUTH,Usuario admin cerró sesión.,admin
+2026-09-30 18:58:51,AUTH,Usuario admin inició sesión.,admin
+2026-09-30 19:02:40,AUTH,Usuario Claudia cerró sesión.,Claudia
+2026-09-30 19:03:17,AUTH,Usuario Arturo inició sesión.,Arturo
+2026-09-30 19:04:16,AUTH,Usuario Arturo cerró sesión.,Arturo
+2026-09-30 19:04:21,AUTH,Usuario admin inició sesión.,Claudia
+2026-10-01 13:54:08,AUTH,Usuario admin inició sesión.,Claudia
+2026-10-01 13:57:34,EXPEDIENTES,Expediente abierto para XIMENA LOZANO,Claudia
+2026-10-01 14:00:50,DOCS,Subido 1. CÉDULA para XIMENA LOZANO,Claudia
+2026-10-01 14:00:54,DOCS,Subido 2. CERTIFICADO REDAM para XIMENA LOZANO,Claudia
+2026-10-01 14:00:58,DOCS,Subido 3. DATOS DE DATACRÉDITO para XIMENA LOZANO,Claudia
+2026-10-01 14:01:02,DOCS,Subido 4. CERTIFICADO SIMIT para XIMENA LOZANO,Claudia
+2026-10-01 14:01:05,DOCS,Subido 5. CERTIFICADO RAMA para XIMENA LOZANO,Claudia
+2026-10-01 14:01:09,DOCS,Subido 6. CERTIFICADO RUNT para XIMENA LOZANO,Claudia
+2026-10-01 14:01:12,DOCS,Subido 7. CERTIFICADO TRADICIÓN Y LIBERTAD para XIMENA LOZANO,Claudia
+2026-10-01 14:01:16,DOCS,Subido 8. CERTIFICADO RUES para XIMENA LOZANO,Claudia
+2026-10-01 14:02:45,CONTRATOS,Generados contratos para XIMENA LOZANO,Claudia
+2026-10-01 14:05:59,TÉRMINOS,Plazo programado para YEIKER STEVEN CARDONA RAMOS (),Claudia
+2026-10-01 14:07:44,FINANZAS,"Abono de $1,000,000 registrado para XIMENA LOZANO",Claudia
+2026-10-01 14:14:09,AUTH,Usuario Claudia cerró sesión.,Claudia
+2026-10-01 14:14:24,AUTH,Usuario Arturo inició sesión.,Arturo
+2026-10-02 14:18:39,AUTH,Usuario admin inició sesión.,Claudia
+2026-10-02 14:27:25,TAREAS,Tarea asignada a Arturo: Llamar a cristian,Claudia
+2026-10-02 14:28:01,AUTH,Usuario Arturo inició sesión.,Arturo
+2026-10-02 14:31:50,AUTH,Usuario admin inició sesión.,Claudia
+2026-10-02 14:32:01,AUTH,Usuario Arturo inició sesión.,Arturo
+2026-10-02 14:32:52,TAREAS,Tarea asignada a Arturo: LLamar a pedro,Claudia
+2026-10-02 14:33:47,AUTH,Usuario admin inició sesión.,Claudia
+2026-10-02 16:28:17,AUTH,Usuario admin inició sesión.,Claudia
+2026-10-02 16:39:39,AUTH,Usuario admin inició sesión.,Claudia
+2026-10-02 16:40:23,AUTH,Usuario admin inició sesión.,Claudia
+2026-10-02 16:47:12,AUTH,Usuario admin inició sesión.,Claudia
+2026-10-02 16:47:20,AUTH,Usuario admin inició sesión.,Claudia
+2026-10-02 16:51:16,AUTH,Usuario admin inició sesión.,Claudia
+2026-10-02 16:57:46,AUTH,Usuario admin inició sesión.,Claudia
+2026-10-02 16:58:39,AUTH,Usuario admin inició sesión.,Claudia
+2026-10-02 16:59:50,AUTH,Usuario admin inició sesión.,Claudia
+2026-10-02 17:09:59,AUTH,Usuario admin inició sesión.,Claudia
+2026-10-02 17:21:20,AUTH,Inició sesión: admin,Claudia
+2026-10-02 17:26:33,AUTH,Inició sesión: admin,Claudia
+2026-10-02 17:30:40,AUTH,Inició sesión: admin,Claudia
+2026-10-02 17:40:58,AUTH,Inició sesión: admin,Claudia
+2026-10-06 16:12:09,AUTH,Inició sesión: admin,Claudia
+2026-10-06 16:14:04,AUTH,Inició sesión: admin,Claudia
+2026-10-06 16:15:56,AUTH,Inició sesión: admin,Claudia
+2026-10-06 16:17:06,AUTH,Inició sesión: admin,Claudia
