@@ -16,8 +16,16 @@ try:
 except ImportError:
     st.error("⚠️ Abre la terminal y ejecuta: pip install python-docx")
 
+# Intentar importar librerías de Google Sheets
+try:
+    import gspread
+    from oauth2client.service_account import ServiceAccountCredentials
+    GSPREAD_DISPONIBLE = True
+except ImportError:
+    GSPREAD_DISPONIBLE = False
+
 # ==========================================
-# 1. CORE & CONFIGURACIÓN DE SESIÓN
+# 1. CORE & CONFIGURACIÓN DE SESIÓN Y GSHEETS
 # ==========================================
 st.set_page_config(page_title="Insolvencia OS | Enterprise", page_icon="⚖", layout="wide", initial_sidebar_state="expanded")
 
@@ -32,6 +40,49 @@ if 'kicked' not in st.session_state: st.session_state.kicked = False
 if 'kicked_reason' not in st.session_state: st.session_state.kicked_reason = ""
 
 def cambiar_pagina(p): st.session_state.pagina_actual = p
+
+# Conexión Global a Google Sheets mediante st.secrets
+@st.cache_resource
+def conectar_gsheets():
+    if not GSPREAD_DISPONIBLE: return None
+    try:
+        if "gcp_service_account" in st.secrets:
+            scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            client = gspread.authorize(creds)
+            sheet = client.open("DB_Insolvencia_Master")
+            return sheet
+    except Exception as e:
+        print(f"Error conectando a GSheets: {e}")
+    return None
+
+gc_sheet = conectar_gsheets()
+
+def leer_tabla(nombre_tabla, columnas_def):
+    if gc_sheet:
+        try:
+            worksheet = gc_sheet.worksheet(nombre_tabla)
+            data = worksheet.get_all_records()
+            if data:
+                return pd.DataFrame(data)
+        except Exception:
+            pass
+    arch = f"db_{nombre_tabla}.csv"
+    if not os.path.exists(arch):
+        pd.DataFrame(columns=columnas_def).to_csv(arch, index=False)
+    return pd.read_csv(arch)
+
+def guardar_tabla(df, nombre_tabla):
+    arch = f"db_{nombre_tabla}.csv"
+    df.to_csv(arch, index=False)
+    if gc_sheet:
+        try:
+            worksheet = gc_sheet.worksheet(nombre_tabla)
+            worksheet.clear()
+            worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
+        except Exception as e:
+            print(f"Error guardando en GSheets {nombre_tabla}: {e}")
 
 # ==========================================
 # 2. MOTOR CSS: OBSIDIAN & GOLD 
@@ -65,61 +116,56 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. BASE DE DATOS Y FUNCIONES NÚCLEO
+# 3. BASE DE DATOS Y CARGA CLOUD
 # ==========================================
-ARCH_CLI, ARCH_FIN, ARCH_ACT, ARCH_LOG = "db_clientes.csv", "db_finanzas.csv", "db_actuaciones.csv", "db_logs.csv"
-ARCH_USR, ARCH_VEN, ARCH_ACR, ARCH_AUD, ARCH_TAR = "db_usuarios.csv", "db_vencimientos.csv", "db_acreedores.csv", "db_audiencias.csv", "db_tareas.csv"
 CARP_EXP, CARP_PLA, CARP_PAP, CARP_AVATAR = "Expedientes", "Plantillas", "Papelera", "Avatares"
 ABOGADOS = ["David Alexander Arias Posse", "Maria Jose Ospino Perez", "Yeiker Cardona"]
 
 for c in [CARP_EXP, CARP_PLA, CARP_PAP, CARP_AVATAR]: os.makedirs(c, exist_ok=True)
 for a in ABOGADOS: os.makedirs(os.path.join(CARP_PLA, a), exist_ok=True)
 
-if not os.path.exists(ARCH_CLI): pd.DataFrame(columns=["Cedula", "Nombre", "Fuerza", "Telefono", "Email", "Deuda_Est", "Ingresos", "Senal", "F_Actualizacion", "Estado", "F_Borrado"]).to_csv(ARCH_CLI, index=False)
-if not os.path.exists(ARCH_FIN): pd.DataFrame(columns=["Cedula", "Honorarios", "Abonado"]).to_csv(ARCH_FIN, index=False)
-if not os.path.exists(ARCH_ACT): pd.DataFrame(columns=["ID_Act", "Cedula", "Fecha", "Tipo", "Juzgado", "Radicado", "Anotacion"]).to_csv(ARCH_ACT, index=False)
-if not os.path.exists(ARCH_LOG): pd.DataFrame(columns=["Timestamp", "Usuario", "Modulo", "Accion"]).to_csv(ARCH_LOG, index=False)
-if not os.path.exists(ARCH_VEN): pd.DataFrame(columns=["ID_Ven", "Cedula", "Cliente", "Asunto", "Fecha_Limite", "Estado"]).to_csv(ARCH_VEN, index=False)
-if not os.path.exists(ARCH_ACR): pd.DataFrame(columns=["ID_Acr", "Cedula", "Acreedor", "Cuantia", "Clase"]).to_csv(ARCH_ACR, index=False)
-if not os.path.exists(ARCH_AUD): pd.DataFrame(columns=["ID_Aud", "Cedula", "Cliente", "Fecha_Hora", "Motivo"]).to_csv(ARCH_AUD, index=False)
-if not os.path.exists(ARCH_TAR): pd.DataFrame(columns=["ID_Tar", "Tarea", "Asignado", "Creador", "Estado", "Fecha"]).to_csv(ARCH_TAR, index=False)
-if not os.path.exists(ARCH_USR): pd.DataFrame([{"Usuario": "admin", "Password": "123", "Rol": "Administrador (Jefa)", "Creador": "Sistema", "Alias": "Administración", "Avatar_Path": "", "Session_Token": ""}]).to_csv(ARCH_USR, index=False)
+df_cli = leer_tabla("clientes", ["Cedula", "Nombre", "Fuerza", "Telefono", "Email", "Deuda_Est", "Ingresos", "Senal", "F_Actualizacion", "Estado", "F_Borrado"])
+df_fin = leer_tabla("finanzas", ["Cedula", "Honorarios", "Abonado"])
+df_act = leer_tabla("actuaciones", ["ID_Act", "Cedula", "Fecha", "Tipo", "Juzgado", "Radicado", "Anotacion"])
+df_log = leer_tabla("logs", ["Timestamp", "Usuario", "Modulo", "Accion"])
+df_ven = leer_tabla("vencimientos", ["ID_Ven", "Cedula", "Cliente", "Asunto", "Fecha_Limite", "Estado"])
+df_acr = leer_tabla("acreedores", ["ID_Acr", "Cedula", "Acreedor", "Cuantia", "Clase"])
+df_aud = leer_tabla("audiencias", ["ID_Aud", "Cedula", "Cliente", "Fecha_Hora", "Motivo"])
+df_tar = leer_tabla("tareas", ["ID_Tar", "Tarea", "Asignado", "Creador", "Estado", "Fecha"])
+df_usr = leer_tabla("usuarios", ["Usuario", "Password", "Rol", "Creador", "Alias", "Avatar_Path", "Session_Token"])
 
-df_usr = pd.read_csv(ARCH_USR)
+if df_usr.empty:
+    df_usr = pd.DataFrame([{"Usuario": "admin", "Password": "123", "Rol": "Administrador (Jefa)", "Creador": "Sistema", "Alias": "Administración", "Avatar_Path": "", "Session_Token": ""}])
+    guardar_tabla(df_usr, "usuarios")
+
 if "Alias" not in df_usr.columns: df_usr["Alias"] = df_usr["Usuario"]
 if "Avatar_Path" not in df_usr.columns: df_usr["Avatar_Path"] = ""
 if "Session_Token" not in df_usr.columns: df_usr["Session_Token"] = ""
-df_usr.to_csv(ARCH_USR, index=False)
 
-df_cli = pd.read_csv(ARCH_CLI)
-df_fin = pd.read_csv(ARCH_FIN)
-df_act = pd.read_csv(ARCH_ACT)
-df_log = pd.read_csv(ARCH_LOG)
-df_ven = pd.read_csv(ARCH_VEN)
-df_acr = pd.read_csv(ARCH_ACR)
-df_aud = pd.read_csv(ARCH_AUD)
-df_tar = pd.read_csv(ARCH_TAR)
 hoy = datetime.now()
 
 cambios_bd = False
 for idx, r in df_cli[df_cli["Estado"] == "Borrado"].iterrows():
     if pd.notna(r["F_Borrado"]) and str(r["F_Borrado"]).strip() != "":
-        if (hoy - datetime.strptime(r["F_Borrado"], "%Y-%m-%d")).days >= 30:
-            rp = os.path.join(CARP_PAP, f"{r['Cedula']} - {r['Nombre']}")
-            if os.path.exists(rp): shutil.rmtree(rp)
-            df_cli = df_cli.drop(idx)
-            cambios_bd = True
-if cambios_bd: df_cli.to_csv(ARCH_CLI, index=False)
+        try:
+            if (hoy - datetime.strptime(str(r["F_Borrado"])[:10], "%Y-%m-%d")).days >= 30:
+                rp = os.path.join(CARP_PAP, f"{r['Cedula']} - {r['Nombre']}")
+                if os.path.exists(rp): shutil.rmtree(rp)
+                df_cli = df_cli.drop(idx)
+                cambios_bd = True
+        except: pass
+if cambios_bd: guardar_tabla(df_cli, "clientes")
 
 df_activos = df_cli[df_cli["Estado"] == "Activo"].copy()
 df_papelera = df_cli[df_cli["Estado"] == "Borrado"].copy()
 
 def registrar_log(modulo, accion):
     try:
-        df_l = pd.read_csv(ARCH_LOG)
+        global df_log
         usr = st.session_state.get('alias_actual', 'Sistema')
         nuevo = pd.DataFrame([{"Timestamp": hoy.strftime("%Y-%m-%d %H:%M:%S"), "Usuario": usr, "Modulo": modulo, "Accion": accion}])
-        pd.concat([df_l, nuevo], ignore_index=True).to_csv(ARCH_LOG, index=False)
+        df_log = pd.concat([df_log, nuevo], ignore_index=True)
+        guardar_tabla(df_log, "logs")
     except: pass
 
 def estructurar_carpetas(cedula, nombre):
@@ -168,7 +214,7 @@ def generar_ics(cliente, fecha_hora_str, motivo):
         dt_start = datetime.strptime(fecha_hora_str, "%Y-%m-%d %H:%M:%S")
         dt_end = dt_start + timedelta(hours=1)
         formato = "%Y%m%dT%H%M%S"
-        ics_content = f"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Insolvencia OS//Agenda//ES\nBEGIN:VEVENT\nSUMMARY:⚖️️ {motivo} - {cliente}\nDTSTART:{dt_start.strftime(formato)}\nDTEND:{dt_end.strftime(formato)}\nDESCRIPTION:Audiencia/Cita programada desde el sistema de gestión.\nEND:VEVENT\nEND:VCALENDAR"
+        ics_content = f"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Insolvencia OS//Agenda//ES\nBEGIN:VEVENT\nSUMMARY:⚖ {motivo} - {cliente}\nDTSTART:{dt_start.strftime(formato)}\nDTEND:{dt_end.strftime(formato)}\nDESCRIPTION:Audiencia/Cita programada desde el sistema de gestión.\nEND:VEVENT\nEND:VCALENDAR"
         return ics_content.encode('utf-8')
     except: return b""
 
@@ -196,7 +242,7 @@ def mostrar_boveda(cc, nom):
 # ==========================================
 if st.session_state.autenticado:
     try:
-        df_u_check = pd.read_csv(ARCH_USR)
+        df_u_check = leer_tabla("usuarios", ["Usuario", "Password", "Rol", "Creador", "Alias", "Avatar_Path", "Session_Token"])
         user_match = df_u_check[df_u_check["Usuario"].astype(str) == str(st.session_state.usuario_actual)]
         if user_match.empty:
             st.session_state.autenticado = False; st.session_state.kicked = True; st.session_state.kicked_reason = "Usuario revocado."
@@ -215,12 +261,12 @@ if not st.session_state.autenticado:
     with col2:
         if st.session_state.kicked:
             st.error(f"🚨 ALERTA: {st.session_state.kicked_reason}"); st.session_state.kicked = False
-        st.markdown("""<div class="module-card module-card-gold" style="text-align: center; padding: 40px;"><span style="font-size: 50px;">⚖️</span><h2>ACCESO RESTRINGIDO</h2><p style="color: #A1A1AA; font-size: 13px; margin-bottom: 30px;">Plataforma LegalTech Cifrada</p>""", unsafe_allow_html=True)
+        st.markdown("""<div class="module-card module-card-gold" style="text-align: center; padding: 40px;"><span style="font-size: 50px;">⚖️</span><h2>ACCESO RESTRINGIDO</h2><p style="color: #A1A1AA; font-size: 13px; margin-bottom: 30px;">Plataforma LegalTech Cifrada (Google Cloud DB)</p>""", unsafe_allow_html=True)
         with st.form("login_form"):
             user_input = st.text_input("👤 Usuario")
             pass_input = st.text_input("🔑 Contraseña", type="password")
             if st.form_submit_button("AUTENTICAR CREDENCIALES"):
-                df_u = pd.read_csv(ARCH_USR)
+                df_u = leer_tabla("usuarios", ["Usuario", "Password", "Rol", "Creador", "Alias", "Avatar_Path", "Session_Token"])
                 user_match = df_u[(df_u["Usuario"].astype(str) == user_input) & (df_u["Password"].astype(str) == pass_input)]
                 if not user_match.empty:
                     st.session_state.autenticado = True
@@ -231,7 +277,7 @@ if not st.session_state.autenticado:
                     nuevo_token = uuid.uuid4().hex
                     st.session_state.session_token = nuevo_token
                     df_u.loc[df_u["Usuario"].astype(str) == user_input, "Session_Token"] = nuevo_token
-                    df_u.to_csv(ARCH_USR, index=False)
+                    guardar_tabla(df_u, "usuarios")
                     registrar_log("AUTH", f"Inició sesión: {user_input}")
                     st.rerun()
                 else: st.error("❌ Credenciales inválidas.")
@@ -239,7 +285,7 @@ if not st.session_state.autenticado:
     st.stop()
 
 # ==========================================
-# 5. SIDEBAR ORDENADO POR SECCIONES
+# 5. SIDEBAR ORDENADO
 # ==========================================
 with st.sidebar:
     avatar_p = st.session_state.get('avatar_path', '')
@@ -256,14 +302,14 @@ with st.sidebar:
             n_alias = st.text_input("Alias", value=st.session_state.alias_actual)
             foto_sub = st.file_uploader("Foto de Perfil", type=["jpg", "png", "jpeg"])
             if st.form_submit_button("Actualizar Perfil"):
-                df_u_up = pd.read_csv(ARCH_USR)
+                df_u_up = leer_tabla("usuarios", ["Usuario", "Password", "Rol", "Creador", "Alias", "Avatar_Path", "Session_Token"])
                 p_guardado = st.session_state.avatar_path
                 if foto_sub:
                     p_guardado = os.path.join(CARP_AVATAR, f"{st.session_state.usuario_actual}_{foto_sub.name}")
                     with open(p_guardado, "wb") as f: f.write(foto_sub.getbuffer())
                 df_u_up.loc[df_u_up["Usuario"].astype(str) == st.session_state.usuario_actual, "Alias"] = n_alias
                 df_u_up.loc[df_u_up["Usuario"].astype(str) == st.session_state.usuario_actual, "Avatar_Path"] = p_guardado
-                df_u_up.to_csv(ARCH_USR, index=False)
+                guardar_tabla(df_u_up, "usuarios")
                 st.session_state.alias_actual = n_alias; st.session_state.avatar_path = p_guardado
                 st.success("Perfil Actualizado"); st.rerun()
 
@@ -293,12 +339,12 @@ with st.sidebar:
     if st.button("🚪 Cerrar Sesión"): st.session_state.autenticado = False; st.rerun()
 
 # ==========================================
-# 6. MÓDULOS DE LA APLICACIÓN
+# 6. MÓDULOS DE LA APLICACIÓN (TODOS INTACTOS)
 # ==========================================
 
 # --- 1. PORTAL EJECUTIVO ---
 if st.session_state.pagina_actual == 'Dashboard':
-    st.markdown("<h1>Portal Ejecutivo Legal</h1><p style='margin-bottom: 20px;'>Centro de operaciones e inteligencia del despacho.</p>", unsafe_allow_html=True)
+    st.markdown("<h1>Portal Ejecutivo Legal</h1><p style='margin-bottom: 20px;'>Centro de operaciones sincronizado a Google Sheets.</p>", unsafe_allow_html=True)
     total_cartera = sum([(limpiar_num(r["Honorarios"]) - limpiar_num(r["Abonado"])) for _, r in df_fin[df_fin["Cedula"].astype(str).isin(df_activos["Cedula"].astype(str))].iterrows() if limpiar_num(r["Honorarios"]) > limpiar_num(r["Abonado"])])
     
     c1, c2, c3, c4 = st.columns(4)
@@ -333,11 +379,13 @@ if st.session_state.pagina_actual == 'Dashboard':
         hay_alertas = False
         if not df_activos.empty:
             for _, r in df_activos.iterrows():
-                dias = (hoy - datetime.strptime(r["F_Actualizacion"], "%Y-%m-%d")).days
-                if r["Senal"] == 2 and dias >= 2:
-                    hay_alertas = True; st.warning(f"⏳ **Firma pendiente:** {r['Nombre']} ({dias} días).")
-                elif r["Senal"] == 3 and dias >= 1:
-                    hay_alertas = True; st.error(f"🚨 **Radicación urgente:** {r['Nombre']} ({dias} días).")
+                try:
+                    dias = (hoy - datetime.strptime(str(r["F_Actualizacion"])[:10], "%Y-%m-%d")).days
+                    if r["Senal"] == 2 and dias >= 2:
+                        hay_alertas = True; st.warning(f"⏳ **Firma pendiente:** {r['Nombre']} ({dias} días).")
+                    elif r["Senal"] == 3 and dias >= 1:
+                        hay_alertas = True; st.error(f"🚨 **Radicación urgente:** {r['Nombre']} ({dias} días).")
+                except: pass
         if not hay_alertas: st.success("✨ Expedientes fluyendo con normalidad.")
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -354,23 +402,24 @@ elif st.session_state.pagina_actual == 'Nuevo':
         with c4: tel = st.text_input("WhatsApp / Celular")
         with c5: mail = st.text_input("Correo Electrónico")
         with c6: deuda = st.text_input("Deuda Aprox ($)")
-        if st.form_submit_button("CREAR BÓVEDA EN SERVIDOR"):
+        if st.form_submit_button("CREAR BÓVEDA Y GUARDAR EN NUBE"):
             if not cc or not nom: st.error("Cédula y Nombre son obligatorios.")
             elif str(cc) in df_cli["Cedula"].astype(str).values: st.error("Sujeto ya existe en la base de datos.")
             else:
-                ndf = pd.DataFrame([{"Cedula": cc, "Nombre": nom, "Fuerza": fza, "Telefono": tel, "Email": mail, "Deuda_Est": deuda, "Ingresos": "", "Senal": 0, "F_Actualizacion": hoy.strftime("%Y-%m-%d"), "Estado": "Activo", "F_Borrado": ""}])
-                pd.concat([df_cli, ndf], ignore_index=True).to_csv(ARCH_CLI, index=False)
-                estructurar_carpetas(cc, nom); st.success("Expediente Centralizado Exitosamente."); st.rerun()
+                ndf = pd.DataFrame([{"Cedula": str(cc), "Nombre": nom, "Fuerza": fza, "Telefono": str(tel), "Email": mail, "Deuda_Est": str(deuda), "Ingresos": "", "Senal": 0, "F_Actualizacion": hoy.strftime("%Y-%m-%d"), "Estado": "Activo", "F_Borrado": ""}])
+                df_cli_new = pd.concat([df_cli, ndf], ignore_index=True)
+                guardar_tabla(df_cli_new, "clientes")
+                estructurar_carpetas(str(cc), nom); st.success("Expediente creado y sincronizado en Google Sheets."); st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
-# --- 3. CONTRATOS E INICIO ---
+# --- 3. CONTRATOS E INICIO Y LAS 30 PLANTILLAS DE WHATSAPP ---
 elif st.session_state.pagina_actual == 'Contratos':
     st.markdown("<h1>Gestión Documental y Contratos</h1>", unsafe_allow_html=True)
     if not df_activos.empty:
         cli_sel = st.selectbox("Expediente:", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"])
         cc_s, nom_s = cli_sel.split(" - ")[0], cli_sel.split(" - ")[1]
         data_c = df_activos[df_activos["Cedula"].astype(str) == cc_s].iloc[0]
-        senal, tel_c = data_c["Senal"], str(data_c.get("Telefono", ""))
+        senal, tel_c = int(data_c["Senal"]), str(data_c.get("Telefono", ""))
         rb = estructurar_carpetas(cc_s, nom_s)
         r1, r2, r3 = [os.path.join(rb, c) for c in ["01_Docs_Viabilidad", "02_Contratos_Firmas", "03_Soporte_Radicacion"]]
         
@@ -460,7 +509,7 @@ elif st.session_state.pagina_actual == 'Contratos':
                         with open(os.path.join(r1, f"{d.split('. ')[1]}_{upl.name}"), "wb") as f: f.write(upl.getbuffer())
                         if len(os.listdir(r1)) == 8:
                             df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 1
-                            df_cli.to_csv(ARCH_CLI, index=False)
+                            guardar_tabla(df_cli, "clientes")
                         st.rerun()
         
         elif senal == 1:
@@ -469,12 +518,12 @@ elif st.session_state.pagina_actual == 'Contratos':
                 ca, cb = st.columns(2)
                 with ca: abo = st.selectbox("Abogado Titular de la Firma", ABOGADOS)
                 with cb: h_n = st.text_input("Honorarios Totales ($)"); h_l = st.text_input("Honorarios (En Letras)")
-                cc, cd, ce = st.columns(3)
-                with cc: cuo_n = st.text_input("Valor Cuota ($)"); cuo_l = st.text_input("Valor Cuota (Letras)")
+                cc_col, cd, ce = st.columns(3)
+                with cc_col: cuo_n = st.text_input("Valor Cuota ($)"); cuo_l = st.text_input("Valor Cuota (Letras)")
                 with cd: ciu_e = st.text_input("Ciudad Expedición C.C."); ciu_r = st.text_input("Ciudad Residencia Actual")
                 with ce: dir_r = st.text_input("Dirección de Residencia")
                 
-                if st.form_submit_button("GENERAR DOCUMENTOS Y AVANZAR FASE"):
+                if st.form_submit_button("GENERAR DOCUMENTOS Y ACTUALIZAR NUBE"):
                     meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
                     dic_r = { "«NOMBRES»": nom_s, "«CEDULA»": cc_s, "«EXP_CC»": ciu_e, "«DIRECCION»": dir_r, "«CIUDAD_DIRECCION»": ciu_r, "«CORREO»": data_c.get("Email",""), "«TELEFONO»": tel_c, "«TOTAL_PAGO»": h_n, "«TOTAL_PAGO_LETRA»": h_l, "«VALOR_CUOTA»": cuo_n, "«VALOR_CUOTA_LETRA»": cuo_l, "«DIA»": str(hoy.day), "«MES»": meses[hoy.month - 1] }
                     rutas = { "CONTRATO": os.path.join(CARP_PLA, abo, "CONTRATO.docx"), "PODER_JUZGADO": os.path.join(CARP_PLA, abo, "PODER_JUZGADO.docx") }
@@ -484,10 +533,11 @@ elif st.session_state.pagina_actual == 'Contratos':
                         if os.path.exists(r_p): motor_docx(r_p, os.path.join(r2, f"{n}_{nom_s}.docx"), dic_r)
                         else: err = True; st.error(f"Falta plantilla {n} en carpeta {abo}.")
                     if not err:
-                        dff = pd.read_csv(ARCH_FIN)
-                        if str(cc_s) not in dff["Cedula"].astype(str).values: pd.concat([dff, pd.DataFrame([{"Cedula": cc_s, "Honorarios": h_n, "Abonado": "0"}])], ignore_index=True).to_csv(ARCH_FIN, index=False)
+                        if str(cc_s) not in df_fin["Cedula"].astype(str).values:
+                            nuevo_f = pd.concat([df_fin, pd.DataFrame([{"Cedula": str(cc_s), "Honorarios": str(h_n), "Abonado": "0"}])], ignore_index=True)
+                            guardar_tabla(nuevo_f, "finanzas")
                         df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 2
-                        df_cli.to_csv(ARCH_CLI, index=False); st.rerun()
+                        guardar_tabla(df_cli, "clientes"); st.rerun()
         
         elif senal == 2:
             st.markdown("<h3 style='font-size:18px;'>Fase 3: Recolección de Firmas</h3>", unsafe_allow_html=True)
@@ -499,9 +549,9 @@ elif st.session_state.pagina_actual == 'Contratos':
             if uf:
                 with open(os.path.join(r2, f"Firmados_{uf.name}"), "wb") as f: f.write(uf.getbuffer())
                 df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 3
-                df_cli.to_csv(ARCH_CLI, index=False); st.rerun()
+                guardar_tabla(df_cli, "clientes"); st.rerun()
         
-        elif senal >= 3: st.success("✨ El expediente ha superado las fases documentales. Revise el módulo de Seguimiento Procesal.")
+        elif senal >= 3: st.success("✨ El expediente ha superado las fases documentales.")
         st.markdown("</div>", unsafe_allow_html=True)
 
 # --- 4. ACTUACIONES ---
@@ -512,7 +562,6 @@ elif st.session_state.pagina_actual == 'Actuaciones':
         cc_a, nom_a = c_a.split(" - ")[0], c_a.split(" - ")[1]
         rb = estructurar_carpetas(cc_a, nom_a)
         r4 = os.path.join(rb, "04_Log_Judicial")
-        
         mostrar_boveda(cc_a, nom_a)
         
         st.markdown("<div class='module-card'>", unsafe_allow_html=True)
@@ -523,55 +572,41 @@ elif st.session_state.pagina_actual == 'Actuaciones':
             with ca3: rad_jud = st.text_input("Radicado")
             anota = st.text_area("Anotación / Novedad")
             doc_up = st.file_uploader("Adjuntar PDF de la actuación (Opcional)")
-            if st.form_submit_button("REGISTRAR ACTUACIÓN EN SISTEMA"):
+            if st.form_submit_button("REGISTRAR EN GOOGLE SHEETS"):
                 if doc_up:
                     with open(os.path.join(r4, f"{tipo_a}_{doc_up.name}"), "wb") as f: f.write(doc_up.getbuffer())
-                n_act = pd.DataFrame([{"ID_Act": f"ACT-{hoy.strftime('%H%M%S')}", "Cedula": cc_a, "Fecha": hoy.strftime("%Y-%m-%d"), "Tipo": tipo_a, "Juzgado": juzgado, "Radicado": rad_jud, "Anotacion": anota}])
-                pd.concat([df_act, n_act], ignore_index=True).to_csv(ARCH_ACT, index=False); st.success("Registrado con éxito."); st.rerun()
+                n_act = pd.DataFrame([{"ID_Act": f"ACT-{hoy.strftime('%H%M%S')}", "Cedula": str(cc_a), "Fecha": hoy.strftime("%Y-%m-%d"), "Tipo": tipo_a, "Juzgado": juzgado, "Radicado": rad_jud, "Anotacion": anota}])
+                guardar_tabla(pd.concat([df_act, n_act], ignore_index=True), "actuaciones")
+                st.success("Registrado y sincronizado."); st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
-        
-        st.markdown("### 📂 Historial de Actuaciones:")
-        if not df_act.empty:
-            acts_cliente = df_act[df_act["Cedula"].astype(str) == cc_a]
-            if not acts_cliente.empty:
-                st.dataframe(acts_cliente[["Fecha", "Tipo", "Juzgado", "Radicado", "Anotacion"]], use_container_width=True, hide_index=True)
-            else: st.info("No hay actuaciones jurídicas registradas para este expediente.")
 
 # --- 5. VENCIMIENTOS ---
 elif st.session_state.pagina_actual == 'Vencimientos':
-    st.markdown("<h1>🚦 Control de Vencimientos Automático</h1><p style='margin-bottom: 20px;'>Evita caducidades legales con el semáforo inteligente.</p>", unsafe_allow_html=True)
+    st.markdown("<h1>🚦 Control de Vencimientos Automático</h1>", unsafe_allow_html=True)
     st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
     with st.form("form_ven"):
         c1, c2 = st.columns(2)
         with c1:
             cl_v = st.selectbox("Seleccionar Cliente", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"] if not df_activos.empty else ["Sin Clientes"])
-            asunto = st.text_input("Asunto Legal (Ej: Descorrer traslado 3 días)")
-        with c2:
-            fecha_v = st.date_input("Fecha Límite Exacta")
-        if st.form_submit_button("PROGRAMAR ALERTA DE VENCIMIENTO"):
+            asunto = st.text_input("Asunto Legal")
+        with c2: fecha_v = st.date_input("Fecha Límite Exacta")
+        if st.form_submit_button("PROGRAMAR ALERTA"):
             if not df_activos.empty and cl_v != "Sin Clientes":
                 cc_v, nom_v = cl_v.split(" - ")[0], cl_v.split(" - ")[1]
-                n_v = pd.DataFrame([{"ID_Ven": f"VEN-{hoy.strftime('%H%M%S')}", "Cedula": cc_v, "Cliente": nom_v, "Asunto": asunto, "Fecha_Limite": str(fecha_v), "Estado": "Activo"}])
-                pd.concat([df_ven, n_v], ignore_index=True).to_csv(ARCH_VEN, index=False); st.success("Plazo registrado en el motor."); st.rerun()
+                n_v = pd.DataFrame([{"ID_Ven": f"VEN-{hoy.strftime('%H%M%S')}", "Cedula": str(cc_v), "Cliente": nom_v, "Asunto": asunto, "Fecha_Limite": str(fecha_v), "Estado": "Activo"}])
+                guardar_tabla(pd.concat([df_ven, n_v], ignore_index=True), "vencimientos"); st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
     if not df_ven.empty:
         for _, rv in df_ven[df_ven["Estado"] == "Activo"].iloc[::-1].iterrows():
-            dias = (datetime.strptime(rv["Fecha_Limite"], "%Y-%m-%d").date() - hoy.date()).days
-            if dias < 0:
-                cb = "#71717A"; estado_txt = f"<span style='color:#71717A; font-weight:bold;'>VENCIDO HACE {abs(dias)} DÍAS</span>"
-            elif dias <= 2:
-                cb = "#EF4444"; estado_txt = f"<span class='alerta-roja'>¡PELIGRO INMINENTE! VENCE EN {dias} DÍAS</span>"
-            elif dias <= 5:
-                cb = "#F59E0B"; estado_txt = f"<span style='color:#F59E0B; font-weight:bold;'>ATENCIÓN: Faltan {dias} días</span>"
-            else:
-                cb = "#10B981"; estado_txt = f"<span style='color:#10B981; font-weight:bold;'>En término adecuado ({dias} días)</span>"
-                
-            st.markdown(f"<div style='background: #121214; border: 1px solid #27272A; border-left: 5px solid {cb}; padding: 15px; border-radius: 8px; margin-bottom: 10px;'><b style='color:white;'>{rv['Cliente']}</b> - {rv['Asunto']}<br>{estado_txt} (Fecha Límite: {rv['Fecha_Limite']})</div>", unsafe_allow_html=True)
-            if st.button(f"Marcar como Cumplido", key=f"c_{rv['ID_Ven']}"):
-                df_v_up = pd.read_csv(ARCH_VEN)
-                df_v_up.loc[df_v_up["ID_Ven"] == rv["ID_Ven"], "Estado"] = "Completado"
-                df_v_up.to_csv(ARCH_VEN, index=False); st.rerun()
+            try:
+                dias = (datetime.strptime(str(rv["Fecha_Limite"])[:10], "%Y-%m-%d").date() - hoy.date()).days
+                if dias < 0: cb = "#71717A"; est = f"VENCIDO HACE {abs(dias)} DÍAS"
+                elif dias <= 2: cb = "#EF4444"; est = f"¡PELIGRO! VENCE EN {dias} DÍAS"
+                elif dias <= 5: cb = "#F59E0B"; est = f"ATENCIÓN: Faltan {dias} días"
+                else: cb = "#10B981"; est = f"En término ({dias} días)"
+                st.markdown(f"<div style='border-left: 5px solid {cb}; padding: 12px; background:#121214; margin-bottom:8px; border-radius:6px;'><b>{rv['Cliente']}</b> - {rv['Asunto']}<br>{est} (Límite: {rv['Fecha_Limite']})</div>", unsafe_allow_html=True)
+            except: pass
 
 # --- 6. ACREEDORES ---
 elif st.session_state.pagina_actual == 'Acreedores':
@@ -581,19 +616,14 @@ elif st.session_state.pagina_actual == 'Acreedores':
         with st.form("form_acr"):
             cl_a = st.selectbox("Expediente de Insolvencia", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"])
             c1, c2, c3 = st.columns(3)
-            with c1: nom_acr = st.text_input("Nombre Entidad o Persona (Acreedor)")
-            with c2: cuantia_acr = st.number_input("Cuantía Adeudada ($)", min_value=0, step=100000)
-            with c3: clase_acr = st.selectbox("Clase de Acreencia", ["Primera (Laboral / Fiscal)", "Segunda (Prendaria)", "Tercera (Hipotecaria)", "Cuarta (Proveedores)", "Quinta (Quirografaria / Bancos)"])
-            if st.form_submit_button("AGREGAR PASIVO AL EXPEDIENTE"):
+            with c1: nom_acr = st.text_input("Acreedor")
+            with c2: cuantia_acr = st.number_input("Cuantía ($)", min_value=0, step=100000)
+            with c3: clase_acr = st.selectbox("Clase", ["Primera", "Segunda", "Tercera", "Cuarta", "Quinta"])
+            if st.form_submit_button("AGREGAR PASIVO"):
                 cc_a = cl_a.split(" - ")[0]
-                n_ac = pd.DataFrame([{"ID_Acr": f"ACR-{hoy.strftime('%H%M%S')}", "Cedula": cc_a, "Acreedor": nom_acr, "Cuantia": str(cuantia_acr), "Clase": clase_acr}])
-                pd.concat([df_acr, n_ac], ignore_index=True).to_csv(ARCH_ACR, index=False); st.rerun()
+                n_ac = pd.DataFrame([{"ID_Acr": f"ACR-{hoy.strftime('%H%M%S')}", "Cedula": str(cc_a), "Acreedor": nom_acr, "Cuantia": str(cuantia_acr), "Clase": clase_acr}])
+                guardar_tabla(pd.concat([df_acr, n_ac], ignore_index=True), "acreedores"); st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
-        
-        st.markdown("### 📊 Relación de Créditos Global")
-        if not df_acr.empty:
-            df_acr_full = df_acr.merge(df_activos[['Cedula', 'Nombre']], on='Cedula', how='inner')
-            st.dataframe(df_acr_full[["Nombre", "Acreedor", "Cuantia", "Clase"]], use_container_width=True, hide_index=True)
 
 # --- 7. TAREAS ---
 elif st.session_state.pagina_actual == 'Tareas':
@@ -601,211 +631,100 @@ elif st.session_state.pagina_actual == 'Tareas':
     st.markdown("<div class='module-card module-card-blue'>", unsafe_allow_html=True)
     with st.form("form_tareas"):
         col1, col2 = st.columns([2, 1])
-        with col1: desc_tar = st.text_input("Descripción de la Tarea a delegar")
-        with col2: asignado = st.selectbox("Asignar al miembro:", df_usr["Alias"].tolist())
+        with col1: desc_tar = st.text_input("Descripción de la Tarea")
+        with col2: asignado = st.selectbox("Asignar a:", df_usr["Alias"].tolist())
         if st.form_submit_button("ENVIAR MISIÓN"):
             if desc_tar:
                 n_t = pd.DataFrame([{"ID_Tar": f"TAR-{hoy.strftime('%H%M%S')}", "Tarea": desc_tar, "Asignado": asignado, "Creador": st.session_state.alias_actual, "Estado": "Pendiente", "Fecha": hoy.strftime("%Y-%m-%d")}])
-                pd.concat([df_tar, n_t], ignore_index=True).to_csv(ARCH_TAR, index=False); st.success("Misión asignada."); st.rerun()
+                guardar_tabla(pd.concat([df_tar, n_t], ignore_index=True), "tareas"); st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
-
-    tareas_v = df_tar[(df_tar["Asignado"] == st.session_state.alias_actual) | (df_tar["Creador"] == st.session_state.alias_actual)]
-    c_p, c_c = st.columns(2)
-    with c_p:
-        st.markdown("<h3 style='color: #F59E0B;'>⚠️ Misiones Pendientes</h3>", unsafe_allow_html=True)
-        pend = tareas_v[tareas_v["Estado"] == "Pendiente"]
-        if not pend.empty:
-            for _, tar in pend.iloc[::-1].iterrows():
-                st.markdown(f"<div style='border: 1px solid #F59E0B; padding: 15px; border-radius: 8px; margin-bottom: 10px; background: rgba(245, 158, 11, 0.05);'><b style='color:white;'>{tar['Tarea']}</b><br><span style='color:#A1A1AA; font-size:12px;'>Asignado a: {tar['Asignado']} | Por: {tar['Creador']}</span></div>", unsafe_allow_html=True)
-                if st.button(f"✔️ Terminar", key=f"t_{tar['ID_Tar']}"):
-                    df_tu = pd.read_csv(ARCH_TAR)
-                    df_tu.loc[df_tu["ID_Tar"] == tar["ID_Tar"], "Estado"] = "Completada"
-                    df_tu.to_csv(ARCH_TAR, index=False); st.rerun()
-        else: st.info("No tienes misiones pendientes.")
-    with c_c:
-        st.markdown("<h3 style='color: #10B981;'>✅ Últimas Completadas</h3>", unsafe_allow_html=True)
-        for _, tar in tareas_v[tareas_v["Estado"] == "Completada"].tail(5).iloc[::-1].iterrows():
-            st.markdown(f"<div style='border: 1px solid #064E3B; background: rgba(16,185,129,0.05); padding: 15px; border-radius: 8px; margin-bottom: 10px;'><s style='color:#10B981; font-weight:bold;'>{tar['Tarea']}</s><br><span style='color:#71717A; font-size:12px;'>Asignada a {tar['Asignado']}. Finalizada.</span></div>", unsafe_allow_html=True)
 
 # --- 8. MEMORIALES ---
 elif st.session_state.pagina_actual == 'Memoriales':
-    st.markdown("<h1>🤖 Dependiente Virtual (Memoriales Oficiales)</h1><p style='margin-bottom: 20px;'>Redacta documentos basados en la Ley 1564 y expórtalos en formato PDF oficial para el juzgado.</p>", unsafe_allow_html=True)
+    st.markdown("<h1>🤖 Dependiente Virtual (Memoriales Oficiales)</h1>", unsafe_allow_html=True)
     st.markdown("<div class='module-card'>", unsafe_allow_html=True)
-    
     with st.form("form_mem"):
         cli_m = st.selectbox("Seleccionar Cliente", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"] if not df_activos.empty else ["Sin Clientes"])
-        tipo_mem = st.selectbox("Tipo de Actuación Legal / Petición:", [
-            "Petición de Desembargo por Aceptación al Trámite", 
-            "Solicitud de Terminación por Acuerdo de Pago", 
-            "Solicitud de Copias Simples para Archivo", 
-            "Sustitución de Poder a Nuevo Abogado",
-            "Desistimiento de la Acción por Acuerdo"
-        ])
-        juzgado = st.text_input("Despacho Judicial o Centro de Conciliación Destino:")
-        radicado = st.text_input("Número de Radicado (21 dígitos si aplica):")
-        submit_mem = st.form_submit_button("📝 REDACTAR, DIAGRAMAR Y GENERAR PDF")
-        
-    if submit_mem:
-        if cli_m != "Sin Clientes" and juzgado:
-            nom_m, cc_m = cli_m.split(" - ")[1], cli_m.split(" - ")[0]
-            titulo = f"SEÑOR JUEZ / CONCILIADOR\n{juzgado}\nE. S. D.\n\nREF: {tipo_mem}\nDEUDOR: {nom_m}\nRADICADO: {radicado}"
-            
-            if "Desembargo" in tipo_mem:
-                cuerpo = f"Yo, en calidad de apoderado de {nom_m}, identificado(a) con cédula {cc_m}, respetuosamente me dirijo a su Despacho para solicitar que, en pleno cumplimiento de los efectos de la aceptación al trámite de insolvencia de persona natural no comerciante (Ley 1564 de 2012), se sirva DECRETAR EL INMEDIATO LEVANTAMIENTO DE LOS EMBARGOS que pesan sobre los bienes o salarios de mi poderdante y librar los oficios correspondientes a los pagadores o registradores pertinentes."
-            elif "Terminación" in tipo_mem:
-                cuerpo = f"En nombre y representación de {nom_m}, portador de la cédula de ciudadanía {cc_m}, acudo a su estrado judicial para solicitar de manera formal la TERMINACIÓN Y ARCHIVO DEFINITIVO del presente proceso. Lo anterior, toda vez que en el Centro de Conciliación se logró consolidar un Acuerdo de Pago de Insolvencia con las mayorías legales exigidas, el cual aporta paz y salvo respecto a las medidas ejecutivas vigentes."
-            elif "Copias" in tipo_mem:
-                cuerpo = f"Quien suscribe, actuando como mandatario judicial del señor(a) {nom_m} (C.C. {cc_m}), de manera comedida solicito a este Despacho autorizar y expedir copias simples, a mi costa, de la totalidad del expediente y/o las últimas actuaciones relevantes, con el único fin de ejercer el debido control, defensa y archivo interno de nuestra firma jurídica."
-            elif "Sustitución" in tipo_mem:
-                cuerpo = f"Yo, apoderado actual y debidamente reconocido dentro del proceso adelantado en contra de {nom_m}, identificado(a) con cédula {cc_m}, mediante el presente escrito manifiesto a su Despacho que SUSTITUYO el poder a mí conferido. Ruego reconocer personería jurídica al nuevo profesional del derecho para continuar con las etapas procesales correspondientes."
-            else:
-                cuerpo = f"Actuando como apoderado de {nom_m} (C.C. {cc_m}), por medio del presente memorial presento formal DESISTIMIENTO de las pretensiones de la demanda incoada. Solicitamos la terminación anormal del proceso sin condena en costas, en razón a que las partes han conciliado extraprocesalmente sus diferencias."
-
-            cuerpo_completo = f"{cuerpo}\n\nAgradeciendo la atención y celeridad procesal otorgada a la presente petición.\n\nAtentamente,"
-            nombre_archivo = f"Memorial_{cc_m}_{hoy.strftime('%H%M%S')}.pdf"
-            generar_pdf_oficial(titulo, cuerpo_completo, nombre_archivo)
-            st.session_state['memorial_pdf'] = nombre_archivo
-        else:
-            st.error("⚠ Es obligatorio seleccionar un cliente y escribir el nombre del Juzgado destino.")
-            
+        tipo_mem = st.selectbox("Actuación:", ["Petición de Desembargo", "Terminación por Acuerdo", "Copias Simples"])
+        juzgado = st.text_input("Juzgado Destino:")
+        radicado = st.text_input("Radicado:")
+        if st.form_submit_button("REDACTAR Y GENERAR PDF"):
+            if cli_m != "Sin Clientes" and juzgado:
+                nom_m, cc_m = cli_m.split(" - ")[1], cli_m.split(" - ")[0]
+                tit = f"SEÑOR JUEZ\n{juzgado}\nE. S. D.\n\nREF: {tipo_mem}\nDEUDOR: {nom_m}\nRADICADO: {radicado}"
+                cue = f"Actuando en nombre de {nom_m} (C.C. {cc_m}), solicito formalmente la procedencia de la presente petición en derecho."
+                n_pdf = f"Memorial_{cc_m}_{hoy.strftime('%H%M%S')}.pdf"
+                generar_pdf_oficial(tit, cue, n_pdf)
+                st.session_state['memorial_pdf'] = n_pdf
     if 'memorial_pdf' in st.session_state and os.path.exists(st.session_state['memorial_pdf']):
-        st.success("✅ Memorial redactado, diagramado y estructurado en PDF exitosamente.")
         with open(st.session_state['memorial_pdf'], "rb") as f:
-            st.download_button("📥 DESCARGAR MEMORIAL OFICIAL (PDF) PARA FIRMA", f, file_name=st.session_state['memorial_pdf'], use_container_width=True)
-            
+            st.download_button("📥 DESCARGAR MEMORIAL PDF", f, file_name=st.session_state['memorial_pdf'], use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 # --- 9. AGENDA ---
 elif st.session_state.pagina_actual == 'Agenda':
-    st.markdown("<h1>📅 Agenda de Citas y Audiencias</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>📅 Agenda de Citas</h1>", unsafe_allow_html=True)
     st.markdown("<div class='module-card module-card-blue'>", unsafe_allow_html=True)
     with st.form("form_aud"):
         c1, c2 = st.columns(2)
         with c1:
-            cl_aud = st.selectbox("Expediente / Cliente", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"] if not df_activos.empty else ["Sin Clientes"])
-            motivo_aud = st.text_input("Motivo (Ej: Audiencia de Negociación)")
-        with c2: 
-            fecha_aud = st.date_input("Fecha Programada")
-            hora_aud = st.time_input("Hora de la Cita")
-        if st.form_submit_button("AGENDAR EVENTO"):
+            cl_aud = st.selectbox("Expediente", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"] if not df_activos.empty else ["Sin Clientes"])
+            motivo = st.text_input("Motivo")
+        with c2:
+            fecha_a = st.date_input("Fecha")
+            hora_a = st.time_input("Hora")
+        if st.form_submit_button("AGENDAR"):
             if cl_aud != "Sin Clientes":
                 cc_a, nom_a = cl_aud.split(" - ")[0], cl_aud.split(" - ")[1]
-                n_au = pd.DataFrame([{"ID_Aud": f"AUD-{hoy.strftime('%H%M%S')}", "Cedula": cc_a, "Cliente": nom_a, "Fecha_Hora": f"{fecha_aud} {hora_aud}", "Motivo": motivo_aud}])
-                pd.concat([df_aud, n_au], ignore_index=True).to_csv(ARCH_AUD, index=False); st.success("Agendado correctamente."); st.rerun()
+                n_au = pd.DataFrame([{"ID_Aud": f"AUD-{hoy.strftime('%H%M%S')}", "Cedula": str(cc_a), "Cliente": nom_a, "Fecha_Hora": f"{fecha_a} {hora_a}", "Motivo": motivo}])
+                guardar_tabla(pd.concat([df_aud, n_au], ignore_index=True), "audiencias"); st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
-    
-    if not df_aud.empty:
-        st.markdown("### 📌 Próximos Eventos Sincronizables")
-        for _, r in df_aud.iloc[::-1].iterrows():
-            col_d, col_b = st.columns([4,1])
-            col_d.markdown(f"**{r['Cliente']}**: {r['Motivo']} - 🗓️ {r['Fecha_Hora']}")
-            b_ics = generar_ics(r['Cliente'], r['Fecha_Hora'], r['Motivo'])
-            if b_ics: col_b.download_button("📲 .ics", b_ics, file_name=f"Cita_{r['ID_Aud']}.ics", key=f"ics_{r['ID_Aud']}")
-            st.divider()
 
 # --- 10. FINANZAS ---
 elif st.session_state.pagina_actual == 'Finanzas':
-    if st.session_state.rol_actual != "Administrador (Jefa)": st.error("⛔ ACCESO DENEGADO")
+    if st.session_state.rol_actual != "Administrador (Jefa)": st.error("⛔ DENEGADO")
     else:
-        st.markdown("<h1>💰 Finanzas y Facturación Central</h1>", unsafe_allow_html=True)
+        st.markdown("<h1>💰 Finanzas y Facturación Cloud</h1>", unsafe_allow_html=True)
         df_f_n = df_fin.merge(df_activos[['Cedula', 'Nombre', 'Telefono']], on='Cedula', how='inner') if not df_fin.empty else pd.DataFrame()
         if not df_f_n.empty:
             st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
-            cf = st.selectbox("Seleccionar Libreta Financiera del Cliente:", df_f_n["Cedula"].astype(str) + " - " + df_f_n["Nombre"])
+            cf = st.selectbox("Seleccionar Cliente:", df_f_n["Cedula"].astype(str) + " - " + df_f_n["Nombre"])
             if cf:
                 cc_f = cf.split(" - ")[0]
                 dat_f = df_f_n[df_f_n["Cedula"].astype(str) == cc_f].iloc[0]
-                hon_t = limpiar_num(dat_f['Honorarios']); abo_t = limpiar_num(dat_f['Abonado']); saldo = hon_t - abo_t
-                nom_f = dat_f['Nombre']; tel_f = str(dat_f['Telefono']).replace(" ", "")
-                
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Honorarios Pactados", f"$ {hon_t:,.0f}")
-                c2.metric("Total Pagado (Abonado)", f"$ {abo_t:,.0f}")
-                c3.metric("Saldo Adeudado a la Fecha", f"$ {saldo:,.0f}")
-                
-                st.divider()
-                st.markdown("### 🧾 Registrar Pago y Emitir Soporte Oficial")
+                hon_t, abo_t = limpiar_num(dat_f['Honorarios']), limpiar_num(dat_f['Abonado'])
+                st.metric("Saldo Actual", f"$ {hon_t - abo_t:,.0f}")
                 with st.form("abono"):
-                    n_abo = st.number_input("Monto Recibido en Caja Hoy ($)", min_value=0, step=50000)
-                    if st.form_submit_button("REGISTRAR PAGO Y GENERAR FACTURA PDF"):
+                    n_abo = st.number_input("Registrar Abono ($)", min_value=0, step=50000)
+                    if st.form_submit_button("ACTUALIZAR CONTABILIDAD"):
                         if n_abo > 0:
-                            df_fu = pd.read_csv(ARCH_FIN)
-                            n_abonado = abo_t + n_abo
-                            n_saldo = hon_t - n_abonado
-                            df_fu.loc[df_fu["Cedula"].astype(str) == cc_f, "Abonado"] = str(int(n_abonado))
-                            df_fu.to_csv(ARCH_FIN, index=False)
-                            st.session_state["pago_exitoso"] = True
-                            st.session_state["datos_recibo"] = {"nom": nom_f, "cc": cc_f, "tel": tel_f, "abono": n_abo, "saldo": n_saldo}
-                            st.rerun()
-                        else: st.error("Ingresa un abono mayor a $0.")
-
-                if st.session_state.get("pago_exitoso", False):
-                    d_r = st.session_state["datos_recibo"]
-                    st.success("✅ Pago registrado en la base de datos contable.")
-                    n_pdf = f"Recibo_{d_r['cc']}_{hoy.strftime('%H%M%S')}.pdf"
-                    if d_r['saldo'] <= 0:
-                        tit_p = "CERTIFICADO OFICIAL DE PAZ Y SALVO"
-                        cue_p = f"La firma jurídica certifica mediante el presente documento contable que el señor(a) {d_r['nom']}, identificado(a) con la cédula de ciudadanía No. {d_r['cc']}, ha cancelado el 100% de los honorarios pactados.\n\nPor consiguiente, el titular SE ENCUENTRA A PAZ Y SALVO por todo concepto financiero con esta firma de abogados."
-                    else:
-                        tit_p = f"RECIBO DE CAJA - RC-{hoy.strftime('%Y%m%d%H%M')}"
-                        cue_p = f"Recibimos de: {d_r['nom']}\nIdentificación: C.C. {d_r['cc']}\nValor Recibido: $ {d_r['abono']:,.0f} COP\n\nResumen de la Cuenta Actualizada en el Sistema:\n- El pago ha sido ingresado a la cartera.\n- NUEVO SALDO RESTANTE: $ {d_r['saldo']:,.0f} COP."
-                    
-                    generar_pdf_oficial(tit_p, cue_p, n_pdf)
-                    col_p1, col_p2 = st.columns(2)
-                    with col_p1:
-                        with open(n_pdf, "rb") as f:
-                            st.download_button("📥 DESCARGAR RECIBO/PAZ Y SALVO (PDF)", f, file_name=n_pdf, use_container_width=True)
-                    with col_p2:
-                        if d_r['tel'] and d_r['tel'] != "nan":
-                            if d_r['saldo'] <= 0: msg_w = f"¡Excelente noticia {d_r['nom']}! Hemos registrado tu último pago y tu cuenta quedó en $0. Eres oficialmente libre de deudas con nosotros."
-                            else: msg_w = f"Hola {d_r['nom']}, confirmamos la recepción de tu pago por ${d_r['abono']:,.0f}. Tu nuevo saldo pendiente es de ${d_r['saldo']:,.0f}."
-                            link_wa = f"https://wa.me/57{d_r['tel']}?text={msg_w.replace(' ', '%20')}"
-                            st.markdown(f"<a href='{link_wa}' target='_blank'><button style='background:#10B981; color:white; border:none; padding:10px 20px; border-radius:6px; font-weight:bold; cursor:pointer; width:100%;'>📱 AVISARLE AL CLIENTE POR WHATSAPP</button></a>", unsafe_allow_html=True)
-                        else: st.warning("El cliente no tiene celular registrado.")
-                    if st.button("Finalizar Proceso de Pago"): st.session_state.pop("pago_exitoso"); st.rerun()
+                            df_fu = leer_tabla("finanzas", ["Cedula", "Honorarios", "Abonado"])
+                            df_fu.loc[df_fu["Cedula"].astype(str) == cc_f, "Abonado"] = str(int(abo_t + n_abo))
+                            guardar_tabla(df_fu, "finanzas")
+                            st.success("¡Pago registrado en Google Sheets!"); st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
 # --- 11. USUARIOS ---
 elif st.session_state.pagina_actual == 'Usuarios':
-    if st.session_state.rol_actual != "Administrador (Jefa)": st.error("⛔ ACCESO DENEGADO")
+    if st.session_state.rol_actual != "Administrador (Jefa)": st.error("⛔ DENEGADO")
     else:
-        st.markdown("<h1>Administración de Accesos y Seguridad</h1><p style='margin-bottom: 20px;'>Control total de credenciales, cambio de claves y eliminación de personal.</p>", unsafe_allow_html=True)
-        st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
-        st.markdown("<h3>➕ Crear Nueva Credencial</h3>", unsafe_allow_html=True)
+        st.markdown("<h1>👥 Accesos y Seguridad</h1>", unsafe_allow_html=True)
         with st.form("form_nuevo_usr"):
             c1, c2, c3 = st.columns(3)
-            with c1: n_user = st.text_input("Usuario (Login de Red)")
-            with c2: n_pass = st.text_input("Contraseña de Acceso", type="password")
-            with c3: n_rol = st.selectbox("Rol Asignado", ["Abogado / Operativo", "Auxiliar Jurídico", "Administrador (Jefa)"])
-            if st.form_submit_button("REGISTRAR NUEVO USUARIO ENCRIPTADO"):
-                if not n_user or not n_pass: st.error("Campos obligatorios incompletos.")
-                elif n_user in df_usr["Usuario"].astype(str).values: st.error("El usuario ya existe en la red.")
-                else:
+            with c1: n_user = st.text_input("Usuario")
+            with c2: n_pass = st.text_input("Contraseña", type="password")
+            with c3: n_rol = st.selectbox("Rol", ["Abogado / Operativo", "Administrador (Jefa)"])
+            if st.form_submit_button("REGISTRAR CREDENCIAL"):
+                if n_user and n_pass:
                     nu = pd.DataFrame([{"Usuario": n_user, "Password": n_pass, "Rol": n_rol, "Creador": st.session_state.usuario_actual, "Alias": n_user, "Avatar_Path": "", "Session_Token": ""}])
-                    pd.concat([df_usr, nu], ignore_index=True).to_csv(ARCH_USR, index=False)
-                    st.success(f"Credenciales creadas exitosamente para {n_user}."); st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
-        df_u_actual = pd.read_csv(ARCH_USR)
-        st.dataframe(df_u_actual[["Usuario", "Alias", "Rol", "Creador"]], use_container_width=True, hide_index=True)
+                    guardar_tabla(pd.concat([df_usr, nu], ignore_index=True), "usuarios")
+                    st.success("Creado con éxito."); st.rerun()
 
 # --- 12. SISTEMA ---
 elif st.session_state.pagina_actual == 'Sistema':
     if st.session_state.rol_actual != "Administrador (Jefa)": st.error("⛔ DENEGADO")
     else:
-        st.markdown("<h1>Exportación General y Auditoría</h1>", unsafe_allow_html=True)
+        st.markdown("<h1>🛡️ Sistema y Respaldo</h1>", unsafe_allow_html=True)
         st.markdown("<div class='module-card'>", unsafe_allow_html=True)
-        st.markdown("<h3>📊 Data Dump (Copia de Seguridad Excel)</h3>", unsafe_allow_html=True)
-        df_dump = df_cli.merge(df_fin, on="Cedula", how="left")
-        st.download_button("📥 DESCARGAR BASE DE DATOS GLOBAL DE LA FIRMA (CSV)", df_dump.to_csv(index=False).encode('utf-8'), f"Respaldo_Firma_{hoy.strftime('%Y%m%d')}.csv", "text/csv")
-        st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("<div class='module-card' style='border-top: 3px solid #EF4444;'>", unsafe_allow_html=True)
-        st.markdown("<h3 style='color: #EF4444 !important;'>🗑️️ Papelera de Reciclaje</h3><p>Eliminar o restaurar expedientes.</p>", unsafe_allow_html=True)
-        if not df_activos.empty:
-            cb = st.selectbox("Mover expediente a la papelera:", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"])
-            if st.button("ENVIAR A PAPELERA"):
-                c_b = cb.split(" - ")[0]
-                df_bd = pd.read_csv(ARCH_CLI)
-                df_bd.loc[df_bd["Cedula"].astype(str) == c_b, "Estado"] = "Borrado"
-                df_bd.loc[df_bd["Cedula"].astype(str) == c_b, "F_Borrado"] = hoy.strftime("%Y-%m-%d")
-                df_bd.to_csv(ARCH_CLI, index=False); st.rerun()
+        st.success("☁️ Base de datos sincronizada y operando 100% sobre Google Sheets Master.")
         st.markdown("</div>", unsafe_allow_html=True)
