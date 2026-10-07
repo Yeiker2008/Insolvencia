@@ -44,7 +44,9 @@ def cambiar_pagina(p): st.session_state.pagina_actual = p
 # Conexión Global a Google Sheets mediante st.secrets
 @st.cache_resource
 def conectar_gsheets():
-    if not GSPREAD_DISPONIBLE: return None
+    if not GSPREAD_DISPONIBLE: 
+        st.error("🚨 La librería gspread no está instalada correctamente en requirements.txt")
+        return None
     try:
         if "gcp_service_account" in st.secrets:
             scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -53,8 +55,10 @@ def conectar_gsheets():
             client = gspread.authorize(creds)
             sheet = client.open("DB_Insolvencia_Master")
             return sheet
+        else:
+            st.error("🚨 No se encontró la sección 'gcp_service_account' en los Secrets de Streamlit.")
     except Exception as e:
-        print(f"Error conectando a GSheets: {e}")
+        st.error(f"🚨 ERROR CRÍTICO CONECTANDO A GOOGLE SHEETS: {e}")
     return None
 
 gc_sheet = conectar_gsheets()
