@@ -80,10 +80,15 @@ def leer_tabla(nombre_tabla, columnas_def):
         try:
             worksheet = gc_sheet.worksheet(nombre_tabla)
             data = worksheet.get_all_records()
-            if data:
-                return pd.DataFrame(data)
+            # BLINDAJE: Siempre toma los datos de la nube, incluso si solo están los títulos
+            df_gs = pd.DataFrame(data)
+            if df_gs.empty:
+                return pd.DataFrame(columns=columnas_def)
+            return df_gs
         except Exception:
             pass
+    
+    # Fallback local solo si falla el internet o Google
     arch = f"db_{nombre_tabla}.csv"
     if not os.path.exists(arch):
         pd.DataFrame(columns=columnas_def).to_csv(arch, index=False)
@@ -336,6 +341,7 @@ with st.sidebar:
     if st.button("📝 Apertura de Casos", key="b_nuev"): cambiar_pagina("Nuevo")
     if st.button("📅 Agenda y Citas", key="b_agen"): cambiar_pagina("Agenda")
     if st.button("✅ Gestor de Tareas", key="b_tar"): cambiar_pagina("Tareas")
+    if st.button("🗑️ Papelera de Reciclaje", key="b_pap"): cambiar_pagina("Papelera") # <-- ESTA ES LA LÍNEA NUEVA
     
     st.markdown("<br><p style='color:#71717A; font-size:11px; font-weight:bold; letter-spacing:1px;'>⚖️ OPERACIÓN JURÍDICA</p>", unsafe_allow_html=True)
     if st.button("⚙️ Contratos y Docs", key="b_cont"): cambiar_pagina("Contratos")
@@ -404,6 +410,24 @@ if st.session_state.pagina_actual == 'Dashboard':
                 except: pass
         if not hay_alertas: st.success("✨ Expedientes fluyendo con normalidad.")
         st.markdown("</div>", unsafe_allow_html=True)
+        # --- ZONA DE PELIGRO: MOVER A PAPELERA ---
+    st.markdown("<hr style='border-color: #27272A;'><h3 style='color:#EF4444;'>⚠️ Zona de Peligro: Gestión de Archivo</h3>", unsafe_allow_html=True)
+    st.markdown("<div class='module-card'>", unsafe_allow_html=True)
+    if not df_activos.empty:
+        with st.form("form_borrar"):
+            cliente_a_borrar = st.selectbox("Seleccionar expediente para mover a la Papelera:", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"])
+            if st.form_submit_button("MOVER A LA PAPELERA"):
+                cc_b = cliente_a_borrar.split(" - ")[0]
+                # Cambiar estado a "Borrado"
+                df_cli.loc[df_cli["Cedula"].astype(str) == cc_b, "Estado"] = "Borrado"
+                df_cli.loc[df_cli["Cedula"].astype(str) == cc_b, "F_Borrado"] = hoy.strftime("%Y-%m-%d")
+                guardar_tabla(df_cli, "clientes")
+                registrar_log("SISTEMA", f"Expediente enviado a papelera: {cc_b}")
+                st.success("¡Expediente movido a la papelera correctamente!")
+                st.rerun()
+    else:
+        st.info("No hay clientes activos para archivar.")
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # --- 2. APERTURA ---
 elif st.session_state.pagina_actual == 'Nuevo':
@@ -711,12 +735,99 @@ elif st.session_state.pagina_actual == 'Agenda':
                 n_au = pd.DataFrame([{"ID_Aud": f"AUD-{hoy.strftime('%H%M%S')}", "Cedula": str(cc_a), "Cliente": nom_a, "Fecha_Hora": f"{fecha_a} {hora_a}", "Motivo": motivo}])
                 guardar_tabla(pd.concat([df_aud, n_au], ignore_index=True), "audiencias"); st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
-
+    
 # --- 10. FINANZAS ---
 elif st.session_state.pagina_actual == 'Finanzas':
     if st.session_state.rol_actual != "Administrador (Jefa)": st.error("⛔ DENEGADO")
     else:
         st.markdown("<h1>💰 Finanzas y Facturación Cloud</h1>", unsafe_allow_html=True)
+        
+        # --- MOTOR GENERADOR DE FACTURAS PRO ---
+        def generar_factura_pdf(nombre, cc, total, abono, saldo, recibo_id):
+            pdf = FPDF()
+            pdf.add_page()
+            # Borde de página estético
+            pdf.rect(5.0, 5.0, 200.0, 287.0)
+            
+            def cln(t): return str(t).encode('latin-1', 'replace').decode('latin-1')
+            
+            # Encabezado Oficial
+            pdf.set_font("Helvetica", 'B', 20)
+            pdf.set_text_color(212, 175, 55) # Color Dorado
+            pdf.cell(0, 15, txt=cln("FIRMA JURÍDICA - INSOLVENCIA OS"), ln=True, align='C')
+            pdf.set_font("Helvetica", 'B', 14)
+            pdf.set_text_color(50, 50, 50)
+            pdf.cell(0, 8, txt=cln("RECIBO DE CAJA / COMPROBANTE DE INGRESO"), ln=True, align='C')
+            pdf.ln(5)
+            
+            # Datos del Documento
+            pdf.set_font("Helvetica", 'B', 10)
+            pdf.cell(0, 6, txt=cln(f"Recibo No: {recibo_id}"), ln=True, align='R')
+            pdf.cell(0, 6, txt=cln(f"Fecha de Emisión: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"), ln=True, align='R')
+            pdf.ln(10)
+            
+            # Cuadro 1: Datos del Cliente
+            pdf.set_fill_color(240, 240, 240)
+            pdf.set_font("Helvetica", 'B', 12)
+            pdf.cell(0, 8, txt=cln(" DATOS DEL CLIENTE"), ln=True, align='L', fill=True)
+            pdf.set_font("Helvetica", '', 11)
+            pdf.cell(0, 6, txt=cln(f" Nombre / Razón Social: {nombre}"), ln=True)
+            pdf.cell(0, 6, txt=cln(f" Cédula de Identidad: {cc}"), ln=True)
+            pdf.ln(5)
+            
+            # Cuadro 2: Concepto del Servicio
+            pdf.set_font("Helvetica", 'B', 12)
+            pdf.cell(0, 8, txt=cln(" DETALLES DEL SERVICIO"), ln=True, align='L', fill=True)
+            pdf.set_font("Helvetica", '', 11)
+            pdf.multi_cell(0, 6, txt=cln("Concepto: Abono a honorarios profesionales por representación jurídica integral en trámite de insolvencia económica persona natural no comerciante (Ley 1564 de 2012)."))
+            pdf.ln(5)
+            
+            # Cuadro 3: Desglose Contable
+            pdf.set_font("Helvetica", 'B', 12)
+            pdf.cell(0, 8, txt=cln(" DESGLOSE FINANCIERO"), ln=True, align='L', fill=True)
+            pdf.ln(2)
+            
+            pdf.set_font("Helvetica", '', 11)
+            pdf.cell(95, 8, txt=cln("Valor Total de Honorarios (Contrato):"), border=1)
+            pdf.set_font("Helvetica", 'B', 11)
+            pdf.cell(95, 8, txt=cln(f"$ {total:,.0f}"), border=1, ln=True, align='R')
+            
+            pdf.set_font("Helvetica", '', 11)
+            pdf.cell(95, 8, txt=cln("Saldo Pendiente Anterior:"), border=1)
+            pdf.set_font("Helvetica", 'B', 11)
+            pdf.cell(95, 8, txt=cln(f"$ {(saldo + abono):,.0f}"), border=1, ln=True, align='R')
+            
+            pdf.set_fill_color(212, 175, 55) # Dorado
+            pdf.set_text_color(255, 255, 255)
+            pdf.set_font("Helvetica", 'B', 12)
+            pdf.cell(95, 10, txt=cln("VALOR ABONADO (ESTE RECIBO):"), border=1, fill=True)
+            pdf.cell(95, 10, txt=cln(f"$ {abono:,.0f}"), border=1, ln=True, align='R', fill=True)
+            
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font("Helvetica", '', 11)
+            pdf.cell(95, 8, txt=cln("NUEVO SALDO PENDIENTE:"), border=1)
+            pdf.set_font("Helvetica", 'B', 11)
+            pdf.cell(95, 8, txt=cln(f"$ {saldo:,.0f}"), border=1, ln=True, align='R')
+            
+            pdf.ln(20)
+            
+            # Firmas
+            pdf.set_font("Helvetica", 'B', 11)
+            pdf.cell(95, 6, txt="__________________________________", align='C')
+            pdf.cell(95, 6, txt="__________________________________", ln=True, align='C')
+            pdf.cell(95, 6, txt=cln("Firma Autorizada - Dpto Financiero"), align='C')
+            pdf.cell(95, 6, txt=cln("Recibí Conforme (Cliente)"), ln=True, align='C')
+            
+            pdf.ln(15)
+            pdf.set_font("Helvetica", 'I', 8)
+            pdf.set_text_color(150, 150, 150)
+            pdf.cell(0, 4, txt=cln("Este documento es un comprobante de ingreso oficial generado y resguardado por el ecosistema LegalTech Insolvencia OS."), ln=True, align='C')
+            
+            filename = f"Factura_{cc}_{recibo_id}.pdf"
+            pdf.output(filename)
+            return filename
+        
+        # --- LÓGICA DE FINANZAS ---
         df_f_n = df_fin.merge(df_activos[['Cedula', 'Nombre', 'Telefono']], on='Cedula', how='inner') if not df_fin.empty else pd.DataFrame()
         if not df_f_n.empty:
             st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
@@ -724,18 +835,52 @@ elif st.session_state.pagina_actual == 'Finanzas':
             if cf:
                 cc_f = cf.split(" - ")[0]
                 dat_f = df_f_n[df_f_n["Cedula"].astype(str) == cc_f].iloc[0]
-                hon_t, abo_t = limpiar_num(dat_f['Honorarios']), limpiar_num(dat_f['Abonado'])
-                st.metric("Saldo Actual", f"$ {hon_t - abo_t:,.0f}")
+                nom_f = dat_f['Nombre']
+                tel_f = dat_f['Telefono']
+                
+                hon_t = limpiar_num(dat_f['Honorarios'])
+                abo_t = limpiar_num(dat_f['Abonado'])
+                saldo_actual = hon_t - abo_t
+                
+                st.metric("Saldo Pendiente Actual", f"$ {saldo_actual:,.0f}")
+                
                 with st.form("abono"):
-                    n_abo = st.number_input("Registrar Abono ($)", min_value=0, step=50000)
-                    if st.form_submit_button("ACTUALIZAR CONTABILIDAD"):
+                    n_abo = st.number_input("Registrar Abono Actual ($)", min_value=0, step=50000)
+                    if st.form_submit_button("ACTUALIZAR CONTABILIDAD Y GENERAR FACTURA"):
                         if n_abo > 0:
+                            nuevo_abonado = abo_t + n_abo
+                            nuevo_saldo = hon_t - nuevo_abonado
+                            
+                            # 1. Actualizar BD en Google Sheets
                             df_fu = leer_tabla("finanzas", ["Cedula", "Honorarios", "Abonado"])
-                            df_fu.loc[df_fu["Cedula"].astype(str) == cc_f, "Abonado"] = str(int(abo_t + n_abo))
+                            df_fu.loc[df_fu["Cedula"].astype(str) == cc_f, "Abonado"] = str(int(nuevo_abonado))
                             guardar_tabla(df_fu, "finanzas")
-                            st.success("¡Pago registrado en Google Sheets!"); st.rerun()
+                            
+                            # 2. Generar Recibo ID
+                            recibo_id = f"REC-{hoy.strftime('%Y%m%d%H%M%S')}"
+                            
+                            # 3. Generar PDF Pro
+                            pdf_path = generar_factura_pdf(nom_f, cc_f, hon_t, n_abo, nuevo_saldo, recibo_id)
+                            st.session_state['ultimo_pdf_factura'] = pdf_path
+                            
+                            # 4. Generar Link de WhatsApp
+                            msg_wa = f"⚖️ *FIRMA JURÍDICA - INSOLVENCIA OS* ⚖️%0A%0AEstimado/a *{nom_f}*, desde el departamento financiero confirmamos la recepción exitosa de su pago.%0A%0A💰 *Abono registrado:* ${n_abo:,.0f}%0A📉 *Nuevo saldo pendiente:* ${nuevo_saldo:,.0f}%0A%0ASu recibo de caja oficial No. {recibo_id} ha sido generado en nuestro sistema. %0A%0A¡Gracias por su cumplimiento y confianza en nuestro equipo!"
+                            st.session_state['ultimo_wa_factura'] = f"https://wa.me/57{str(tel_f).replace(' ', '')}?text={msg_wa}"
+                            
+                            st.success("¡Pago registrado en la nube con éxito!")
+                            st.rerun()
+                            
+                # --- ZONA DE DESCARGA Y ENVÍO ---
+                if 'ultimo_pdf_factura' in st.session_state and os.path.exists(st.session_state['ultimo_pdf_factura']):
+                    st.markdown("<hr style='border-color: #27272A;'><h3 style='color:#10B981;'>🧾 Factura Oficial Generada</h3>", unsafe_allow_html=True)
+                    col_f1, col_f2 = st.columns(2)
+                    with col_f1:
+                        with open(st.session_state['ultimo_pdf_factura'], "rb") as f:
+                            st.download_button("📥 DESCARGAR FACTURA (PDF)", f, file_name=st.session_state['ultimo_pdf_factura'], use_container_width=True)
+                    with col_f2:
+                        if 'ultimo_wa_factura' in st.session_state:
+                            st.markdown(f"<a href='{st.session_state['ultimo_wa_factura']}' target='_blank'><button style='background:#10B981; color:white; border:none; padding:10px 20px; border-radius:6px; font-weight:bold; cursor:pointer; width:100%;'>🚀 ENVIAR RESUMEN POR WHATSAPP</button></a>", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
-
 # --- 11. USUARIOS ---
 elif st.session_state.pagina_actual == 'Usuarios':
     if st.session_state.rol_actual != "Administrador (Jefa)": st.error("⛔ DENEGADO")
@@ -780,3 +925,30 @@ elif st.session_state.pagina_actual == 'Sistema':
         else:
             st.info("No hay registros de auditoría recientes.")
         st.markdown("</div>", unsafe_allow_html=True)
+
+# --- 13. PAPELERA DE RECICLAJE ---
+elif st.session_state.pagina_actual == 'Papelera':
+    st.markdown("<h1>🗑️ Papelera de Reciclaje</h1>", unsafe_allow_html=True)
+    st.markdown("<div class='module-card'>", unsafe_allow_html=True)
+    
+    if not df_papelera.empty:
+        st.warning("⚠️ Los expedientes guardados aquí se borrarán del sistema permanentemente después de 30 días.")
+        # Mostrar tabla de borrados
+        st.dataframe(df_papelera[["Cedula", "Nombre", "Fuerza", "F_Borrado"]], use_container_width=True, hide_index=True)
+        
+        st.markdown("<hr style='border-color: #27272A;'>", unsafe_allow_html=True)
+        st.markdown("<h3>🔄 Restaurar Expediente</h3>", unsafe_allow_html=True)
+        with st.form("form_restaurar"):
+            cliente_res = st.selectbox("Seleccionar expediente para restaurar:", df_papelera["Cedula"].astype(str) + " - " + df_papelera["Nombre"])
+            if st.form_submit_button("RESTAURAR A CLIENTES ACTIVOS"):
+                cc_r = cliente_res.split(" - ")[0]
+                df_cli.loc[df_cli["Cedula"].astype(str) == cc_r, "Estado"] = "Activo"
+                df_cli.loc[df_cli["Cedula"].astype(str) == cc_r, "F_Borrado"] = ""
+                guardar_tabla(df_cli, "clientes")
+                registrar_log("SISTEMA", f"Expediente restaurado: {cc_r}")
+                st.success("¡Expediente restaurado! Ya vuelve a aparecer en la plataforma principal.")
+                st.rerun()
+    else:
+        st.info("✨ La papelera está completamente vacía.")
+        
+    st.markdown("</div>", unsafe_allow_html=True)
