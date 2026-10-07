@@ -75,12 +75,13 @@ def conectar_gsheets():
 
 gc_sheet = conectar_gsheets()
 
+# Inyectamos Caché Ultrarrápida (Guarda en RAM por 2 minutos o hasta que haya cambios)
+@st.cache_data(ttl=120, show_spinner=False)
 def leer_tabla(nombre_tabla, columnas_def):
     if gc_sheet:
         try:
             worksheet = gc_sheet.worksheet(nombre_tabla)
             data = worksheet.get_all_records()
-            # BLINDAJE: Siempre toma los datos de la nube, incluso si solo están los títulos
             df_gs = pd.DataFrame(data)
             if df_gs.empty:
                 return pd.DataFrame(columns=columnas_def)
@@ -88,7 +89,6 @@ def leer_tabla(nombre_tabla, columnas_def):
         except Exception:
             pass
     
-    # Fallback local solo si falla el internet o Google
     arch = f"db_{nombre_tabla}.csv"
     if not os.path.exists(arch):
         pd.DataFrame(columns=columnas_def).to_csv(arch, index=False)
@@ -104,9 +104,12 @@ def guardar_tabla(df, nombre_tabla):
             worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
         except Exception as e:
             print(f"Error guardando en GSheets {nombre_tabla}: {e}")
+            
+    # MAGIA: Vaciamos la RAM para que la app descargue los datos frescos de inmediato
+    leer_tabla.clear()
 
 # ==========================================
-# 2. MOTOR CSS: SAAS CORPORATIVO LIMPIO (ANTI-FATIGA VISUAL)
+# 2. MOTOR CSS: SAAS CORPORATIVO LIMPIO (ANTI-FATIGA VISUAL + ANIMACIONES 3D)
 # ==========================================
 st.markdown("""
     <style>
@@ -114,33 +117,64 @@ st.markdown("""
     #MainMenu, footer, header {visibility: hidden !important; display: none !important;}
     [data-testid="stHeader"] {display: none !important; visibility: hidden !important;}
     
-    /* Fuentes y fondos generales (Área de trabajo clara y limpia) */
+    /* Fuentes y fondos generales (Área de trabajo clara) */
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; background-color: #F8FAFC !important; color: #1E293B !important; }
     h1, h2, h3 { color: #0F172A !important; font-weight: 700; letter-spacing: -0.5px; }
     [data-testid="stAppViewContainer"] { background-color: #F4F7F8 !important; background-image: none !important; }
     
-    /* Sidebar: Oscuro y elegante (Mantiene tus textos blancos a salvo) */
+    /* Sidebar: Oscuro y elegante */
     [data-testid="stSidebar"] { background-color: #0F172A !important; border-right: 1px solid #1E293B !important; }
-    [data-testid="stSidebar"] * { color: #F8FAFC; }
+    /* Textos del sidebar (Títulos y párrafos) en blanco, sin dañar los inputs ni botones */
+    [data-testid="stSidebar"] p, [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3, [data-testid="stSidebar"] span, [data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] { color: #F8FAFC !important; }
     
-    /* Botones generales (Azul Corporativo Suave) */
-    div.stButton > button:first-child { background: #FFFFFF !important; color: #2563EB !important; border: 1px solid #2563EB !important; border-radius: 6px !important; padding: 10px 20px !important; font-weight: 600 !important; font-size: 13px !important; transition: all 0.2s ease !important; width: 100%;}
-    div.stButton > button:first-child:hover { background: #2563EB !important; color: #FFFFFF !important; box-shadow: 0 4px 12px rgba(37,99,235,0.2) !important; transform: translateY(-1px); }
+    /* 🔥 BOTONES DEL SIDEBAR: Visibles, elegantes y con animación de agrandado */
+    [data-testid="stSidebar"] div.stButton > button:first-child {
+        background-color: #1E293B !important; /* Fondo oscuro sutil */
+        color: #F8FAFC !important; /* Letras blancas siempre visibles */
+        border: 1px solid #334155 !important;
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important; /* Transición súper suave */
+    }
+    [data-testid="stSidebar"] div.stButton > button:first-child:hover {
+        background-color: #2563EB !important; /* Azul eléctrico al pasar el mouse */
+        border-color: #2563EB !important;
+        color: #FFFFFF !important; 
+        transform: scale(1.05) !important; /* EFECTO 3D: EL BOTÓN SE AGRANDA */
+        box-shadow: 0 5px 15px rgba(37,99,235,0.4) !important; /* Brillo azul */
+        z-index: 10;
+    }
+
+    /* 🔥 BOTONES DEL ÁREA PRINCIPAL: Blancos con azul y animación de agrandado */
+    div.stButton > button:first-child { 
+        background: #FFFFFF !important; 
+        color: #2563EB !important; 
+        border: 2px solid #2563EB !important; 
+        border-radius: 6px !important; 
+        padding: 10px 20px !important; 
+        font-weight: 600 !important; 
+        font-size: 13px !important; 
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important; 
+        width: 100%;
+    }
+    div.stButton > button:first-child:hover { 
+        background: #2563EB !important; 
+        color: #FFFFFF !important; 
+        box-shadow: 0 8px 20px rgba(37,99,235,0.3) !important; 
+        transform: scale(1.03) translateY(-2px) !important; /* EFECTO 3D: SE AGRANDA Y SE LEVANTA */
+    }
     
-    /* Tarjetas de Módulos (Blancas con sombras suaves anti-fatiga) */
+    /* Tarjetas de Módulos */
     .module-card { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 30px; margin-bottom: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03); }
-    .module-card p { color: #475569 !important; } /* Fuerza que los textos de tus cards sean oscuros */
+    .module-card p { color: #475569 !important; } 
     
-    /* Reemplazo automático de los bordes superiores de colores */
-    .module-card-gold { border-top: 3px solid #2563EB !important; } /* De dorado a azul corporativo */
+    .module-card-gold { border-top: 3px solid #2563EB !important; } 
     .module-card-blue { border-top: 3px solid #0EA5E9 !important; }
     .module-card-green { border-top: 3px solid #10B981 !important; }
     
-    /* Inputs y Formularios: Blancos con borde gris */
-    input, textarea, select, div[data-baseweb="select"] > div, div[data-baseweb="input"] > div { background-color: #FFFFFF !important; color: #0F172A !important; -webkit-text-fill-color: #0F172A !important; border: 1px solid #CBD5E1 !important; border-radius: 6px !important; }
+    /* Inputs y Formularios: Blancos con borde gris oscuro para que se vean en cualquier lado */
+    input, textarea, select, div[data-baseweb="select"] > div, div[data-baseweb="input"] > div { background-color: #FFFFFF !important; color: #0F172A !important; -webkit-text-fill-color: #0F172A !important; border: 1px solid #94A3B8 !important; border-radius: 6px !important; }
     input:focus, textarea:focus { border-color: #2563EB !important; box-shadow: 0 0 0 2px rgba(37,99,235,0.2) !important; }
     
-    /* Línea de Tiempo de Fases (Adaptada a colores claros) */
+    /* Línea de Tiempo de Fases */
     .timeline { display: flex; justify-content: space-between; align-items: center; margin: 30px 0; position: relative; }
     .timeline::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: #E2E8F0; z-index: 1; }
     .step { position: relative; z-index: 2; background: #F8FAFC; padding: 8px 16px; border-radius: 20px; border: 2px solid #E2E8F0; color: #64748B; font-weight: 600; font-size: 12px; display: flex; align-items: center; text-transform: uppercase; }
