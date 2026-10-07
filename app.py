@@ -41,7 +41,7 @@ if 'kicked_reason' not in st.session_state: st.session_state.kicked_reason = ""
 
 def cambiar_pagina(p): st.session_state.pagina_actual = p
 
-# Conexión y Auto-creación Global en Google Sheets
+# Conexión y Auto-creación Global en Google Sheets con aviso visual
 @st.cache_resource
 def conectar_gsheets():
     if not GSPREAD_DISPONIBLE: return None
@@ -54,29 +54,20 @@ def conectar_gsheets():
             
             nombre_hoja = "DB_Insolvencia_Master"
             
-            # Intentar abrirla si ya existe
             try:
                 sheet = client.open(nombre_hoja)
             except gspread.SpreadsheetNotFound:
-                # Si no existe, la crea automáticamente la app
                 sheet = client.create(nombre_hoja)
-                
-                # Crear las pestañas obligatorias de una vez
                 pestañas = ["clientes", "finanzas", "actuaciones", "vencimientos", "acreedores", "audiencias", "tareas", "usuarios", "logs"]
-                # La primera hoja por defecto se llama "Sheet1", la renombramos
                 first_sheet = sheet.get_sheet_by_id(0)
                 first_sheet.update_title(pestañas[0])
-                
-                # Crear las demás pestañas
                 for p in pestañas[1:]:
                     sheet.add_worksheet(title=p, rows="100", cols="20")
-                
-                # COMPARTIRLA AUTOMÁTICAMENTE A TU CORREO PERSONAL
                 try:
                     sheet.share('chincuenta5025@gmail.com', perm_type='user', role='writer')
                 except:
                     pass
-                    
+            
             return sheet
     except Exception as e:
         st.error(f"🚨 ERROR CRÍTICO CREANDO/CONECTANDO GSHEETS: {e}")
