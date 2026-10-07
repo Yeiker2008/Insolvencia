@@ -106,31 +106,47 @@ def guardar_tabla(df, nombre_tabla):
             print(f"Error guardando en GSheets {nombre_tabla}: {e}")
 
 # ==========================================
-# 2. MOTOR CSS: OBSIDIAN & GOLD 
+# 2. MOTOR CSS: SAAS CORPORATIVO LIMPIO (ANTI-FATIGA VISUAL)
 # ==========================================
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700&family=Playfair+Display:wght@600;800;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     #MainMenu, footer, header {visibility: hidden !important; display: none !important;}
     [data-testid="stHeader"] {display: none !important; visibility: hidden !important;}
-    [data-testid="collapsedControl"] { visibility: visible !important; display: block !important; background-color: #121214 !important; border: 1px solid #D4AF37 !important; border-radius: 6px !important; color: #D4AF37 !important; z-index: 999999; }
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; background-color: #050505 !important; color: #E4E4E7 !important; }
-    h1, h2, h3 { font-family: 'Playfair Display', serif !important; color: #FACC15 !important; letter-spacing: -0.5px; }
-    [data-testid="stAppViewContainer"] { background-color: #050505 !important; background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px); background-size: 30px 30px; }
-    [data-testid="stSidebar"] { background-color: #09090B !important; border-right: 1px solid #27272A !important; }
-    input, textarea, select, div[data-baseweb="select"] > div, div[data-baseweb="input"] > div { background-color: #121214 !important; color: #F8FAFC !important; -webkit-text-fill-color: #F8FAFC !important; border: 1px solid #27272A !important; border-radius: 6px !important; }
-    input:focus, textarea:focus { border-color: #D4AF37 !important; box-shadow: 0 0 10px rgba(212,175,55,0.2) !important; }
-    .module-card { background: linear-gradient(145deg, #121214 0%, #09090B 100%); border: 1px solid #27272A; border-radius: 12px; padding: 30px; margin-bottom: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
-    .module-card-gold { border-top: 3px solid #D4AF37; }
-    .module-card-blue { border-top: 3px solid #3B82F6; }
-    .module-card-green { border-top: 3px solid #10B981; }
-    div.stButton > button:first-child { background: #121214 !important; color: #D4AF37 !important; border: 1px solid #D4AF37 !important; border-radius: 4px !important; padding: 10px 20px !important; font-weight: 700 !important; text-transform: uppercase; font-size: 13px !important; transition: all 0.3s ease !important; width: 100%;}
-    div.stButton > button:first-child:hover { background: #D4AF37 !important; color: #050505 !important; box-shadow: 0 0 25px rgba(212,175,55,0.4) !important; transform: translateY(-2px); }
+    
+    /* Fuentes y fondos generales (Área de trabajo clara y limpia) */
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; background-color: #F8FAFC !important; color: #1E293B !important; }
+    h1, h2, h3 { color: #0F172A !important; font-weight: 700; letter-spacing: -0.5px; }
+    [data-testid="stAppViewContainer"] { background-color: #F4F7F8 !important; background-image: none !important; }
+    
+    /* Sidebar: Oscuro y elegante (Mantiene tus textos blancos a salvo) */
+    [data-testid="stSidebar"] { background-color: #0F172A !important; border-right: 1px solid #1E293B !important; }
+    [data-testid="stSidebar"] * { color: #F8FAFC; }
+    
+    /* Botones generales (Azul Corporativo Suave) */
+    div.stButton > button:first-child { background: #FFFFFF !important; color: #2563EB !important; border: 1px solid #2563EB !important; border-radius: 6px !important; padding: 10px 20px !important; font-weight: 600 !important; font-size: 13px !important; transition: all 0.2s ease !important; width: 100%;}
+    div.stButton > button:first-child:hover { background: #2563EB !important; color: #FFFFFF !important; box-shadow: 0 4px 12px rgba(37,99,235,0.2) !important; transform: translateY(-1px); }
+    
+    /* Tarjetas de Módulos (Blancas con sombras suaves anti-fatiga) */
+    .module-card { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 30px; margin-bottom: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03); }
+    .module-card p { color: #475569 !important; } /* Fuerza que los textos de tus cards sean oscuros */
+    
+    /* Reemplazo automático de los bordes superiores de colores */
+    .module-card-gold { border-top: 3px solid #2563EB !important; } /* De dorado a azul corporativo */
+    .module-card-blue { border-top: 3px solid #0EA5E9 !important; }
+    .module-card-green { border-top: 3px solid #10B981 !important; }
+    
+    /* Inputs y Formularios: Blancos con borde gris */
+    input, textarea, select, div[data-baseweb="select"] > div, div[data-baseweb="input"] > div { background-color: #FFFFFF !important; color: #0F172A !important; -webkit-text-fill-color: #0F172A !important; border: 1px solid #CBD5E1 !important; border-radius: 6px !important; }
+    input:focus, textarea:focus { border-color: #2563EB !important; box-shadow: 0 0 0 2px rgba(37,99,235,0.2) !important; }
+    
+    /* Línea de Tiempo de Fases (Adaptada a colores claros) */
     .timeline { display: flex; justify-content: space-between; align-items: center; margin: 30px 0; position: relative; }
-    .timeline::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: #27272A; z-index: 1; }
-    .step { position: relative; z-index: 2; background: #050505; padding: 8px 16px; border-radius: 20px; border: 2px solid #27272A; color: #71717A; font-weight: 600; font-size: 12px; display: flex; align-items: center; text-transform: uppercase; }
-    .step.active { border-color: #D4AF37; color: #D4AF37; box-shadow: 0 0 15px rgba(212,175,55,0.3); background: #121214; }
-    .step.completed { border-color: #10B981; color: #10B981; background: #064E3B; }
+    .timeline::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: #E2E8F0; z-index: 1; }
+    .step { position: relative; z-index: 2; background: #F8FAFC; padding: 8px 16px; border-radius: 20px; border: 2px solid #E2E8F0; color: #64748B; font-weight: 600; font-size: 12px; display: flex; align-items: center; text-transform: uppercase; }
+    .step.active { border-color: #2563EB; color: #2563EB; box-shadow: 0 0 0 4px rgba(37,99,235,0.1); background: #FFFFFF; }
+    .step.completed { border-color: #10B981; color: #FFFFFF; background: #10B981; }
+    
     .alerta-roja { animation: blinker 1.5s linear infinite; color: #EF4444 !important; font-weight: bold;}
     @keyframes blinker { 50% { opacity: 0; } }
     </style>
@@ -606,8 +622,23 @@ elif st.session_state.pagina_actual == 'Contratos':
                 with open(os.path.join(r2, f"Firmados_{uf.name}"), "wb") as f: f.write(uf.getbuffer())
                 df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 3
                 guardar_tabla(df_cli, "clientes"); st.rerun()
-        
-        elif senal >= 3: st.success("✨ El expediente ha superado las fases documentales.")
+                
+        elif senal == 3:
+            st.markdown("<h3 style='font-size:18px;'>Fase 4: Radicación Oficial del Expediente</h3>", unsafe_allow_html=True)
+            st.info("📌 Los contratos ya están firmados. Sube aquí el comprobante de radicación oficial (Centro de Conciliación o Juzgado).")
+            urad = st.file_uploader("📥 Subir Soporte de Radicado (PDF/IMG)", type=["pdf", "jpg", "png"])
+            if urad:
+                with open(os.path.join(r3, f"Radicado_{urad.name}"), "wb") as f: f.write(urad.getbuffer())
+                df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 4
+                guardar_tabla(df_cli, "clientes"); st.rerun()
+                
+        elif senal >= 4: 
+            st.success("✨ ¡Misión Cumplida! El expediente está oficialmente radicado y ha superado todas las fases documentales.")
+            archivos_rad = os.listdir(r3)
+            if archivos_rad:
+                for ar in archivos_rad:
+                    st.markdown(f"📄 **Soporte Oficial guardado:** `{ar}`")
+                
         st.markdown("</div>", unsafe_allow_html=True)
 
 # --- 4. ACTUACIONES ---
