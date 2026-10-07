@@ -106,9 +106,9 @@ def guardar_tabla(df, nombre_tabla):
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700&family=Playfair+Display:wght@600;800;900&display=swap');
-    #MainMenu, footer {visibility: hidden;}
+    #MainMenu, footer, header {visibility: hidden !important; display: none !important;}
+    [data-testid="stHeader"] {display: none !important; visibility: hidden !important;}
     [data-testid="collapsedControl"] { visibility: visible !important; display: block !important; background-color: #121214 !important; border: 1px solid #D4AF37 !important; border-radius: 6px !important; color: #D4AF37 !important; z-index: 999999; }
-    [data-testid="collapsedControl"] svg { fill: #D4AF37 !important; }
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; background-color: #050505 !important; color: #E4E4E7 !important; }
     h1, h2, h3 { font-family: 'Playfair Display', serif !important; color: #FACC15 !important; letter-spacing: -0.5px; }
     [data-testid="stAppViewContainer"] { background-color: #050505 !important; background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px); background-size: 30px 30px; }
@@ -418,16 +418,32 @@ elif st.session_state.pagina_actual == 'Nuevo':
         with c4: tel = st.text_input("WhatsApp / Celular")
         with c5: mail = st.text_input("Correo Electrónico")
         with c6: deuda = st.text_input("Deuda Aprox ($)")
+        
+        # --- NUEVA SECCIÓN DE COBROS AQUÍ ---
+        st.markdown("<hr style='border-color: #27272A;'>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#D4AF37; font-weight:bold;'>💰 Configuración Financiera del Caso</p>", unsafe_allow_html=True)
+        cf1, cf2 = st.columns(2)
+        with cf1: honorarios_totales = st.text_input("Valor Total de Honorarios del Caso ($)", value="0")
+        with cf2: abono_inicial = st.text_input("Abono Inicial Recibido ($)", value="0")
+        
         if st.form_submit_button("CREAR BÓVEDA Y GUARDAR EN NUBE"):
             if not cc or not nom: st.error("Cédula y Nombre son obligatorios.")
             elif str(cc) in df_cli["Cedula"].astype(str).values: st.error("Sujeto ya existe en la base de datos.")
             else:
+                # 1. Guardar datos del cliente
                 ndf = pd.DataFrame([{"Cedula": str(cc), "Nombre": nom, "Fuerza": fza, "Telefono": str(tel), "Email": mail, "Deuda_Est": str(deuda), "Ingresos": "", "Senal": 0, "F_Actualizacion": hoy.strftime("%Y-%m-%d"), "Estado": "Activo", "F_Borrado": ""}])
                 df_cli_new = pd.concat([df_cli, ndf], ignore_index=True)
                 guardar_tabla(df_cli_new, "clientes")
-                estructurar_carpetas(str(cc), nom); st.success("Expediente creado y sincronizado en Google Sheets."); st.rerun()
+                
+                # 2. Guardar honorarios automáticamente en Finanzas
+                nuevo_f = pd.concat([df_fin, pd.DataFrame([{"Cedula": str(cc), "Honorarios": str(honorarios_totales), "Abonado": str(abono_inicial)}])], ignore_index=True)
+                guardar_tabla(nuevo_f, "finanzas")
+                
+                estructurar_carpetas(str(cc), nom)
+                st.success("Expediente creado, finanzas configuradas y sincronizado en Google Sheets.")
+                st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
-
+    
 # --- 3. CONTRATOS E INICIO Y LAS 30 PLANTILLAS DE WHATSAPP ---
 elif st.session_state.pagina_actual == 'Contratos':
     st.markdown("<h1>Gestión Documental y Contratos</h1>", unsafe_allow_html=True)
@@ -740,7 +756,27 @@ elif st.session_state.pagina_actual == 'Usuarios':
 elif st.session_state.pagina_actual == 'Sistema':
     if st.session_state.rol_actual != "Administrador (Jefa)": st.error("⛔ DENEGADO")
     else:
-        st.markdown("<h1>🛡️ Sistema y Respaldo</h1>", unsafe_allow_html=True)
-        st.markdown("<div class='module-card'>", unsafe_allow_html=True)
+        st.markdown("<h1>🛡️ Auditoría y Exportación del Sistema</h1>", unsafe_allow_html=True)
+        st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
         st.success("☁️ Base de datos sincronizada y operando 100% sobre Google Sheets Master.")
+        
+        # --- BOTONES DE DESCARGA ---
+        st.markdown("<h3>📥 Descarga de Resguardos CSV Locales</h3>", unsafe_allow_html=True)
+        col_d1, col_d2, col_d3 = st.columns(3)
+        with col_d1:
+            csv_c = df_cli.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Descargar Clientes CSV", csv_c, "clientes.csv", "text/csv")
+        with col_d2:
+            csv_f = df_fin.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Descargar Finanzas CSV", csv_f, "finanzas.csv", "text/csv")
+        with col_d3:
+            csv_l = df_log.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Descargar Logs CSV", csv_l, "logs.csv", "text/csv")
+            
+        # --- TABLA DE AUDITORÍA EN VIVO ---
+        st.markdown("<br><h3>📜 Registro de Auditoría en Vivo (Logs de Actividad)</h3>", unsafe_allow_html=True)
+        if not df_log.empty:
+            st.dataframe(df_log.iloc[::-1], use_container_width=True, hide_index=True)
+        else:
+            st.info("No hay registros de auditoría recientes.")
         st.markdown("</div>", unsafe_allow_html=True)
