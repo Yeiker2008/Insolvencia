@@ -41,25 +41,45 @@ if 'kicked_reason' not in st.session_state: st.session_state.kicked_reason = ""
 
 def cambiar_pagina(p): st.session_state.pagina_actual = p
 
-# Conexión Global a Google Sheets mediante ID directo y st.secrets
+# Conexión y Auto-creación Global en Google Sheets
 @st.cache_resource
 def conectar_gsheets():
-    if not GSPREAD_DISPONIBLE: 
-        st.error("🚨 La librería gspread no está instalada.")
-        return None
+    if not GSPREAD_DISPONIBLE: return None
     try:
         if "gcp_service_account" in st.secrets:
             scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
             creds_dict = dict(st.secrets["gcp_service_account"])
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             client = gspread.authorize(creds)
-            # Abrir directamente por el ID único de tu Google Sheet
-            sheet = client.open_by_key("1lVHiGjDwWjg4EMqQNm9xtBDoWnLHZ4qWy8BruoHvhc")
+            
+            nombre_hoja = "DB_Insolvencia_Master"
+            
+            # Intentar abrirla si ya existe
+            try:
+                sheet = client.open(nombre_hoja)
+            except gspread.SpreadsheetNotFound:
+                # Si no existe, la crea automáticamente la app
+                sheet = client.create(nombre_hoja)
+                
+                # Crear las pestañas obligatorias de una vez
+                pestañas = ["clientes", "finanzas", "actuaciones", "vencimientos", "acreedores", "audiencias", "tareas", "usuarios", "logs"]
+                # La primera hoja por defecto se llama "Sheet1", la renombramos
+                first_sheet = sheet.get_sheet_by_id(0)
+                first_sheet.update_title(pestañas[0])
+                
+                # Crear las demás pestañas
+                for p in pestañas[1:]:
+                    sheet.add_worksheet(title=p, rows="100", cols="20")
+                
+                # COMPARTIRLA AUTOMÁTICAMENTE A TU CORREO PERSONAL
+                try:
+                    sheet.share('chincuenta5025@gmail.com', perm_type='user', role='writer')
+                except:
+                    pass
+                    
             return sheet
-        else:
-            st.error("🚨 No se encontró la sección 'gcp_service_account' en los Secrets.")
     except Exception as e:
-        st.error(f"🚨 ERROR CRÍTICO CONECTANDO A GOOGLE SHEETS: {e}")
+        st.error(f"🚨 ERROR CRÍTICO CREANDO/CONECTANDO GSHEETS: {e}")
     return None
 
 gc_sheet = conectar_gsheets()
