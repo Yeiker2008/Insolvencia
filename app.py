@@ -950,17 +950,87 @@ elif st.session_state.pagina_actual == 'Finanzas':
 elif st.session_state.pagina_actual == 'Usuarios':
     if st.session_state.rol_actual != "Administrador (Jefa)": st.error("⛔ DENEGADO")
     else:
-        st.markdown("<h1>👥 Accesos y Seguridad</h1>", unsafe_allow_html=True)
-        with st.form("form_nuevo_usr"):
-            c1, c2, c3 = st.columns(3)
-            with c1: n_user = st.text_input("Usuario")
-            with c2: n_pass = st.text_input("Contraseña", type="password")
-            with c3: n_rol = st.selectbox("Rol", ["Abogado / Operativo", "Administrador (Jefa)"])
-            if st.form_submit_button("REGISTRAR CREDENCIAL"):
-                if n_user and n_pass:
-                    nu = pd.DataFrame([{"Usuario": n_user, "Password": n_pass, "Rol": n_rol, "Creador": st.session_state.usuario_actual, "Alias": n_user, "Avatar_Path": "", "Session_Token": ""}])
-                    guardar_tabla(pd.concat([df_usr, nu], ignore_index=True), "usuarios")
-                    st.success("Creado con éxito."); st.rerun()
+        st.markdown("<h1>👥 Gestión de Accesos y Seguridad</h1>", unsafe_allow_html=True)
+        
+        # 1. Mostrar lista de usuarios (sin la contraseña por seguridad)
+        st.markdown("<div class='module-card'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='font-size: 18px; margin-bottom: 10px;'>📋 Usuarios Activos en el Sistema</h3>", unsafe_allow_html=True)
+        df_mostrar = df_usr[["Usuario", "Alias", "Rol", "Creador"]].copy()
+        st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        col1, col2 = st.columns(2)
+        
+        # 2. Panel Izquierdo: Crear Usuario
+        with col1:
+            st.markdown("<div class='module-card module-card-blue'>", unsafe_allow_html=True)
+            st.markdown("<h3 style='font-size: 18px;'>➕ Crear Nuevo Usuario</h3>", unsafe_allow_html=True)
+            with st.form("form_nuevo_usr"):
+                n_user = st.text_input("Usuario de Login (Ej: mario_abogado)")
+                n_pass = st.text_input("Contraseña", type="password")
+                n_alias = st.text_input("Nombre a mostrar (Alias / Nombre Real)")
+                n_rol = st.selectbox("Rol en la plataforma", ["Abogado / Operativo", "Administrador (Jefa)"])
+                if st.form_submit_button("CREAR CREDENCIAL"):
+                    if n_user and n_pass:
+                        if n_user in df_usr["Usuario"].astype(str).values:
+                            st.error("❌ Ese usuario ya existe.")
+                        else:
+                            alias_final = n_alias if n_alias else n_user
+                            nu = pd.DataFrame([{"Usuario": n_user, "Password": n_pass, "Rol": n_rol, "Creador": st.session_state.usuario_actual, "Alias": alias_final, "Avatar_Path": "", "Session_Token": ""}])
+                            guardar_tabla(pd.concat([df_usr, nu], ignore_index=True), "usuarios")
+                            st.success(f"Usuario {n_user} creado con éxito.")
+                            st.rerun()
+                    else:
+                        st.error("⚠ Usuario y Contraseña son obligatorios.")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        # 3. Panel Derecho: Editar o Eliminar Usuario
+        with col2:
+            st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
+            st.markdown("<h3 style='font-size: 18px;'>✏️ Modificar o Eliminar Cuenta</h3>", unsafe_allow_html=True)
+            
+            usr_sel = st.selectbox("Selecciona un usuario a gestionar:", df_usr["Usuario"].tolist())
+            
+            if usr_sel:
+                usr_data = df_usr[df_usr["Usuario"] == usr_sel].iloc[0]
+                with st.form("form_edit_usr"):
+                    e_alias = st.text_input("Cambiar Nombre / Alias", value=usr_data.get("Alias", usr_sel))
+                    e_pass = st.text_input("Nueva Contraseña (Dejar en blanco para no cambiar)", type="password")
+                    idx_rol = 0 if usr_data["Rol"] == "Abogado / Operativo" else 1
+                    e_rol = st.selectbox("Cambiar Rol", ["Abogado / Operativo", "Administrador (Jefa)"], index=idx_rol)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    col_btn1, col_btn2 = st.columns(2)
+                    
+                    with col_btn1:
+                        btn_guardar = st.form_submit_button("💾 GUARDAR CAMBIOS")
+                    with col_btn2:
+                        # Botón rojo usando CSS en línea para diferenciarlo
+                        st.markdown("""<style>div[data-testid="stFormSubmitButton"] button:contains('ELIMINAR') { background: #EF4444 !important; border-color: #EF4444 !important; color: white !important; }</style>""", unsafe_allow_html=True)
+                        btn_eliminar = st.form_submit_button("🗑️ ELIMINAR USUARIO")
+                        
+                    if btn_guardar:
+                        df_usr.loc[df_usr["Usuario"] == usr_sel, "Alias"] = e_alias
+                        df_usr.loc[df_usr["Usuario"] == usr_sel, "Rol"] = e_rol
+                        if e_pass.strip():  # Solo la cambia si escribes algo
+                            df_usr.loc[df_usr["Usuario"] == usr_sel, "Password"] = e_pass
+                        guardar_tabla(df_usr, "usuarios")
+                        registrar_log("SEGURIDAD", f"Actualizó credenciales de: {usr_sel}")
+                        st.success("✅ Cambios guardados.")
+                        st.rerun()
+                        
+                    if btn_eliminar:
+                        if usr_sel == st.session_state.usuario_actual:
+                            st.error("❌ ¡Peligro! No puedes eliminar tu propia cuenta mientras la estás usando.")
+                        elif usr_sel == "admin" and len(df_usr[df_usr["Rol"] == "Administrador (Jefa)"]) == 1:
+                            st.error("❌ No puedes eliminar al único Administrador del sistema.")
+                        else:
+                            df_usr = df_usr[df_usr["Usuario"] != usr_sel]
+                            guardar_tabla(df_usr, "usuarios")
+                            registrar_log("SEGURIDAD", f"Eliminó al usuario: {usr_sel}")
+                            st.success(f"🗑️ Usuario {usr_sel} eliminado permanentemente.")
+                            st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
 
 # --- 12. SISTEMA ---
 elif st.session_state.pagina_actual == 'Sistema':
