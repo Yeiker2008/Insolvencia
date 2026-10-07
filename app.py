@@ -41,11 +41,11 @@ if 'kicked_reason' not in st.session_state: st.session_state.kicked_reason = ""
 
 def cambiar_pagina(p): st.session_state.pagina_actual = p
 
-# Conexión Global a Google Sheets mediante st.secrets
+# Conexión Global a Google Sheets mediante ID directo y st.secrets
 @st.cache_resource
 def conectar_gsheets():
     if not GSPREAD_DISPONIBLE: 
-        st.error("🚨 La librería gspread no está instalada correctamente en requirements.txt")
+        st.error("🚨 La librería gspread no está instalada.")
         return None
     try:
         if "gcp_service_account" in st.secrets:
@@ -53,10 +53,11 @@ def conectar_gsheets():
             creds_dict = dict(st.secrets["gcp_service_account"])
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             client = gspread.authorize(creds)
-            sheet = client.open("DB_Insolvencia_Master")
+            # Abrir directamente por el ID único de tu Google Sheet
+            sheet = client.open_by_key("1lVHiGjDwWjg4EMqQNm9xtBDoWnLHZ4qWy8BruoHvhc")
             return sheet
         else:
-            st.error("🚨 No se encontró la sección 'gcp_service_account' en los Secrets de Streamlit.")
+            st.error("🚨 No se encontró la sección 'gcp_service_account' en los Secrets.")
     except Exception as e:
         st.error(f"🚨 ERROR CRÍTICO CONECTANDO A GOOGLE SHEETS: {e}")
     return None
