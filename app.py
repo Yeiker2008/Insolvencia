@@ -498,7 +498,7 @@ elif st.session_state.pagina_actual == 'Nuevo':
         st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
         with st.form("nuevo_exp"):
             c1, c2, c3 = st.columns(3)
-            with c1: cc = text_input("Cédula de Ciudadanía")
+            with c1: cc = st.text_input("Cédula de Ciudadanía")
             with c2: nom = st.text_input("Nombre Completo")
             with c3: fza = st.selectbox("Facción", ["Policía Nacional", "Ejército Nacional", "Armada Nacional", "Fuerza Aérea", "Retirado / Pensionado", "Civil"])
             c4, c5, c6 = st.columns(3)
