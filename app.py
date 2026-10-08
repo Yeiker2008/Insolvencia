@@ -957,36 +957,49 @@ elif st.session_state.pagina_actual == 'Contratos':
             arch_drive, sub_id = obtener_archivos_y_id(cc_s, nom_s, "Financiero")
             st.markdown(f"<h3 style='font-size:18px;'>Fase 1: Recolección Documental ({len(arch_drive)}/8)</h3>", unsafe_allow_html=True)
             docs = ["1. CÉDULA", "2. CERTIFICADO REDAM", "3. DATACRÉDITO", "4. CERTIFICADO SIMIT", "5. CERTIFICADO RAMA", "6. CERTIFICADO RUNT", "7. TRADICIÓN Y LIBERTAD", "8. CERTIFICADO RUES"]
-            c_a, c_b = st.columns(2)
             
-            for i, d in enumerate(docs):
-                col = c_a if i < 4 else c_b
-                nombre_corto = d.split(". ")[1]
+            with st.form("form_subida_masiva"):
+                c_a, c_b = st.columns(2)
+                uploaders = {}
                 
-                # Verificamos si ya está subido en Drive
-                if any(nombre_corto in f for f in arch_drive): 
-                    col.success(f"✔️ {d}")
-                else:
-                    with col.container():
-                        st.markdown(f"<p style='font-size:13px; font-weight:bold; margin-bottom:0;'>Subir: {d}</p>", unsafe_allow_html=True)
-                        upl = st.file_uploader(f"Subir {d}", key=f"up_{i}", label_visibility="collapsed")
+                for i, d in enumerate(docs):
+                    col = c_a if i < 4 else c_b
+                    nombre_corto = d.split(". ")[1]
+                    
+                    if any(nombre_corto in f for f in arch_drive): 
+                        col.success(f"✔️ {d} (Ya en Drive)")
+                    else:
+                        # Guardamos la referencia de cada uploader dentro del formulario
+                        uploaders[nombre_corto] = col.file_uploader(f"📥 Subir: {d}", key=f"up_masivo_{i}")
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                # Un solo botón maestro para procesar todo lo que se adjuntó
+                btn_enviar_todo = st.form_submit_button("🚀 SUBIR TODOS LOS DOCUMENTOS SELECCIONADOS A DRIVE")
+                
+                if btn_enviar_todo:
+                    if sub_id:
+                        subidos_count = 0
+                        with st.spinner("Subiendo documentos a Google Drive en lote..."):
+                            for nombre_corto, upl in uploaders.items():
+                                if upl is not None:
+                                    nombre_archivo = f"{nombre_corto}_{upl.name}"
+                                    subir_a_drive_mem(upl, nombre_archivo, sub_id)
+                                    subidos_count += 1
                         
-                        # Botón individual de envío para evitar que se borre de memoria
-                        if upl is not None:
-                            if st.button(f"📤 Guardar {nombre_corto} en Drive", key=f"btn_subir_{i}"):
-                                if sub_id:
-                                    with st.spinner(f"Subiendo {d} a Google Drive..."):
-                                        nombre_archivo = f"{nombre_corto}_{upl.name}"
-                                        subir_a_drive_mem(upl, nombre_archivo, sub_id)
-                                        
-                                        # Verificamos cuántos hay ahora en Drive
-                                        arch_actualizados, _ = obtener_archivos_y_id(cc_s, nom_s, "Financiero")
-                                        if len(arch_actualizados) >= 8:
-                                            df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 1
-                                            guardar_tabla(df_cli, "clientes")
-                                    st.success("¡Archivo guardado en Drive con éxito!")
-                                    time.sleep(1)
-                                    st.rerun()
+                        if subidos_count > 0:
+                            st.success(f"¡Se subieron {subidos_count} documento(s) con éxito a Google Drive!")
+                            
+                            # Verificamos si ya se completaron los 8 documentos en total
+                            arch_actualizados, _ = obtener_archivos_y_id(cc_s, nom_s, "Financiero")
+                            if len(arch_actualizados) >= 8:
+                                df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 1
+                                guardar_tabla(df_cli, "clientes")
+                                st.info("🎉 ¡Fase 1 completada! El expediente avanzará a la Fase 2.")
+                            
+                            time.sleep(1.5)
+                            st.rerun()
+                        else:
+                            st.warning("⚠️ No seleccionaste ningún archivo nuevo para subir.")
                         
         elif senal == 1:
             st.markdown("<h3 style='font-size:18px;'>Fase 2: Motor de Contratos</h3>", unsafe_allow_html=True)
