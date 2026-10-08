@@ -121,7 +121,69 @@ def restaurar_de_papelera_drive(cc, nom):
     except Exception as e:
         print(f"Error restaurando carpeta en Drive: {e}")
         return False
+
+def obtener_id_subcarpeta_drive(cc, nom, nombre_subcarpeta):
+    """Busca y retorna el ID de la subcarpeta interna (ej: '01_Docs_Viabilidad') en Google Drive"""
+    if not gc_drive: return None
+    nombre_carpeta_cliente = f"{cc} - {nom}"
+    try:
+        # 1. Buscar carpeta principal del cliente en la Bóveda
+        query = f"name='{nombre_carpeta_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        res = gc_drive.files().list(q=query, fields="files(id)").execute()
+        carpetas = res.get('files', [])
+        if not carpetas: return None
+        cliente_id = carpetas[0]['id']
         
+        # 2. Buscar la subcarpeta interna
+        query_sub = f"name='{nombre_subcarpeta}' and '{cliente_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        res_sub = gc_drive.files().list(q=query_sub, fields="files(id)").execute()
+        subcarpetas = res_sub.get('files', [])
+        if subcarpetas: return subcarpetas[0]['id']
+        return None
+    except Exception as e:
+        print(f"Error obteniendo subcarpeta en Drive: {e}")
+        return None
+
+def subir_archivo_a_drive(file_obj, filename, folder_id):
+    """Sube un archivo cargado desde Streamlit directamente a una carpeta de Google Drive"""
+    if not gc_drive or not folder_id: return False
+    try:
+        # Guardar archivo temporal en disco local para transferir a la API
+        temp_path = f"temp_{filename}"
+        with open(temp_path, "wb") as f:
+            f.write(file_obj.getbuffer())
+            
+        file_metadata = {'name': filename, 'parents': [folder_id]}
+        media = MediaFileUpload(temp_path, resumable=True)
+        gc_drive.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        
+        if os.path.exists(temp_path): os.remove(temp_path)
+        return True
+    except Exception as e:
+        print(f"Error subiendo archivo a Drive: {e}")
+        return False
+
+def listar_y_descargar_archivos_drive(folder_id):
+    """Lista todos los archivos de una subcarpeta en Drive y retorna una lista con su nombre y contenido binario"""
+    if not gc_drive or not folder_id: return []
+    try:
+        query = f"'{folder_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
+        res = gc_drive.files().list(q=query, fields="files(id, name)").execute()
+        archivos = res.get('files', [])
+        lista_descargas = []
+        for a in archivos:
+            request = gc_drive.files().get_media(fileId=a['id'])
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while not done:
+                status, done = downloader.next_chunk()
+            fh.seek(0)
+            lista_descargas.append({'id': a['id'], 'name': a['name'], 'content': fh.getvalue()})
+        return lista_descargas
+    except Exception as e:
+        print(f"Error listando archivos de Drive: {e}")
+        return []
 
 # ==========================================
 # 1. CORE & CONFIGURACIÓN DE SESIÓN Y GSHEETS
@@ -422,28 +484,33 @@ def generar_ics(cliente, fecha_hora_str, motivo):
     except: return b""
 
 def mostrar_boveda(cc, nom):
-    with st.expander("📂 BÓVEDA CENTRAL DE ARCHIVOS DEL EXPEDIENTE", expanded=False):
-        rb = estructurar_carpetas(cc, nom)
-        carpetas = ["01_Docs_Viabilidad", "02_Contratos_Firmas", "03_Soporte_Radicacion", "04_Log_Judicial", "05_Pruebas_Anexos"]
+    with st.expander("📂 BÓVEDA CENTRAL DE ARCHIVOS EN GOOGLE DRIVE", expanded=False):
+        estructurar_carpetas(cc, nom)
+        subcarpetas = ["Financiero", "Juzgado", "Notaria", "Acreedores"]
         cols = st.columns(2)
-        for i, c in enumerate(carpetas):
+        
+        for i, sub in enumerate(subcarpetas):
             col = cols[i % 2]
-            archivos = os.listdir(os.path.join(rb, c))
-            col.markdown(f"<p style='color:#2563EB; margin-bottom:2px; font-weight:bold;'>{c.replace('_', ' ').title()}</p>", unsafe_allow_html=True)
-            if archivos:
-                for a in archivos:
-                    ruta = os.path.join(rb, c, a)
-                    if os.path.isfile(ruta):
-                        # Se crean dos sub-columnas: una para descargar y otra para borrar
+            col.markdown(f"<p style='color:#2563EB; margin-bottom:2px; font-weight:bold;'>{sub}</p>", unsafe_allow_html=True)
+            folder_id = obtener_id_subcarpeta_drive(cc, nom, sub)
+            
+            if folder_id:
+                archivos = listar_y_descargar_archivos_drive(folder_id)
+                if archivos:
+                    for a in archivos:
                         c_down, c_del = col.columns([4, 1])
-                        with open(ruta, "rb") as f:
-                            c_down.download_button(f"📄 {a[:15]}...", f, file_name=a, key=f"dl_{cc}_{c}_{a}", use_container_width=True)
-                        # Botón para borrar el archivo de la bóveda
-                        if c_del.button("🗑️", key=f"del_{cc}_{c}_{a}", help="Borrar archivo incorrecto"):
-                            os.remove(ruta)
+                        c_down.download_button(
+                            f"📄 {a['name'][:20]}...", 
+                            a['content'], 
+                            file_name=a['name'], 
+                            key=f"dl_drive_{cc}_{sub}_{a['id']}", 
+                            use_container_width=True
+                        )
+                        if c_del.button("🗑️", key=f"del_drive_{cc}_{sub}_{a['id']}", help="Borrar archivo de Google Drive"):
+                            gc_drive.files().delete(fileId=a['id']).execute()
                             st.rerun()
-            else:
-                col.markdown("<span style='color:#64748B; font-size:12px;'><i>Carpeta vacía</i></span>", unsafe_allow_html=True)
+                else:
+                    col.markdown("<span style='color:#64748B; font-size:12px;'><i>Carpeta vacía</i></span>", unsafe_allow_html=True)
             col.write("")
 
 # ==========================================
@@ -852,11 +919,12 @@ elif st.session_state.pagina_actual == 'Contratos':
                 else:
                     upl = col.file_uploader(f"📥 Subir: {d}", key=f"up_{i}")
                     if upl:
-                        with open(os.path.join(r1, f"{d.split('. ')[1]}_{upl.name}"), "wb") as f: f.write(upl.getbuffer())
-                        if len(os.listdir(r1)) == 8:
+                        sub_id = obtener_id_subcarpeta_drive(cc_s, nom_s, "Financiero")
+                        if sub_id:
+                            subir_archivo_a_drive(upl, f"{d.split('. ')[1]}_{upl.name}", sub_id)
                             df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 1
                             guardar_tabla(df_cli, "clientes")
-                        st.rerun()
+                            st.rerun()
         
         elif senal == 1:
             st.markdown("<h3 style='font-size:18px;'>Fase 2: Motor de Contratos</h3>", unsafe_allow_html=True)
@@ -893,18 +961,24 @@ elif st.session_state.pagina_actual == 'Contratos':
                     with open(ruta, "rb") as f: st.download_button(f"📥 Imprimir Documento: {dg}", f, file_name=dg)
             uf = st.file_uploader("📥 Subir Paquete de Contratos Firmados (PDF)", type=["pdf"])
             if uf:
-                with open(os.path.join(r2, f"Firmados_{uf.name}"), "wb") as f: f.write(uf.getbuffer())
-                df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 3
-                guardar_tabla(df_cli, "clientes"); st.rerun()
+                sub_id = obtener_id_subcarpeta_drive(cc_s, nom_s, "Notaria")
+                if sub_id:
+                    subir_archivo_a_drive(uf, f"Firmados_{uf.name}", sub_id)
+                    df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 3
+                    guardar_tabla(df_cli, "clientes")
+                    st.rerun()
                 
         elif senal == 3:
             st.markdown("<h3 style='font-size:18px;'>Fase 4: Radicación Oficial del Expediente</h3>", unsafe_allow_html=True)
             st.info("📌 Los contratos ya están firmados. Sube aquí el comprobante de radicación oficial (Centro de Conciliación o Juzgado).")
             urad = st.file_uploader("📥 Subir Soporte de Radicado (PDF/IMG)", type=["pdf", "jpg", "png"])
             if urad:
-                with open(os.path.join(r3, f"Radicado_{urad.name}"), "wb") as f: f.write(urad.getbuffer())
-                df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 4
-                guardar_tabla(df_cli, "clientes"); st.rerun()
+                sub_id = obtener_id_subcarpeta_drive(cc_s, nom_s, "Juzgado")
+                if sub_id:
+                    subir_archivo_a_drive(urad, f"Radicado_{urad.name}", sub_id)
+                    df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 4
+                    guardar_tabla(df_cli, "clientes")
+                    st.rerun()
                 
         elif senal >= 4: 
             st.success("✨ ¡Misión Cumplida! El expediente está oficialmente radicado y ha superado todas las fases documentales.")
