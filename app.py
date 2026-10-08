@@ -1087,7 +1087,7 @@ elif st.session_state.pagina_actual == 'Usuarios':
                         st.error("⚠ Usuario y Contraseña son obligatorios.")
             st.markdown("</div>", unsafe_allow_html=True)
 
-        # 3. Panel Derecho: Editar o Eliminar Usuario (BLINDADO)
+        # 3. Panel Derecho: Editar, Eliminar y EXPULSAR Usuario
         with col2:
             st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
             st.markdown("<h3 style='font-size: 18px;'>✏️ Modificar o Eliminar Cuenta</h3>", unsafe_allow_html=True)
@@ -1112,18 +1112,32 @@ elif st.session_state.pagina_actual == 'Usuarios':
                         btn_eliminar = st.form_submit_button("🗑️ ELIMINAR USUARIO")
                         
                     if btn_guardar:
-                        # --- BLINDAJE CONTRA TYPE ERROR ---
-                        df_usr = df_usr.astype(str)
+                        df_usr = df_usr.astype(str) # Blindaje de Pandas
                         
                         df_usr.loc[df_usr["Usuario"] == str(usr_sel), "Alias"] = str(e_alias)
                         df_usr.loc[df_usr["Usuario"] == str(usr_sel), "Rol"] = str(e_rol)
-                        if e_pass.strip():  # Solo cambia la clave si escribiste algo nuevo
+                        
+                        clave_cambiada = False
+                        if e_pass.strip():  # Si escribiste una clave nueva...
                             df_usr.loc[df_usr["Usuario"] == str(usr_sel), "Password"] = str(e_pass)
+                            # 🔥 LA MAGIA: Invalidamos el Token de Sesión en la Base de Datos
+                            df_usr.loc[df_usr["Usuario"] == str(usr_sel), "Session_Token"] = "REVOCADO_POR_SEGURIDAD"
+                            clave_cambiada = True
                             
                         guardar_tabla(df_usr, "usuarios")
                         registrar_log("SEGURIDAD", f"Actualizó credenciales de: {usr_sel}")
-                        st.success("✅ Cambios de seguridad guardados correctamente.")
-                        time.sleep(1.5)
+                        
+                        if clave_cambiada:
+                            st.success(f"✅ Contraseña cambiada. La sesión de '{usr_sel}' ha sido cerrada forzosamente.")
+                            # Si te cambiaste la clave a ti mismo, el sistema te saca a ti también de inmediato
+                            if usr_sel == st.session_state.usuario_actual:
+                                st.session_state.autenticado = False
+                                st.session_state.kicked = True
+                                st.session_state.kicked_reason = "Tu contraseña fue actualizada. Inicia sesión nuevamente por seguridad."
+                        else:
+                            st.success("✅ Cambios guardados correctamente.")
+                            
+                        time.sleep(2.5)
                         st.rerun()
                         
                     if btn_eliminar:
@@ -1139,7 +1153,7 @@ elif st.session_state.pagina_actual == 'Usuarios':
                             time.sleep(1.5)
                             st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
-
+            
 # --- 12. SISTEMA ---
 elif st.session_state.pagina_actual == 'Sistema':
     if st.session_state.rol_actual != "Administrador (Jefa)": st.error("⛔ DENEGADO")
