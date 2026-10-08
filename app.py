@@ -907,85 +907,135 @@ elif st.session_state.pagina_actual == 'Contratos':
         st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
+        st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
+        
+        # --- MOTOR DE GOOGLE DRIVE PARA CONTRATOS ---
+        def obtener_archivos_y_id(cc, nom, subcarpeta):
+            if not gc_drive: return [], None
+            try:
+                q1 = f"name='{cc} - {nom}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and trashed=false"
+                r1 = gc_drive.files().list(q=q1, fields="files(id)").execute()
+                if not r1.get('files'): return [], None
+                cli_id = r1['files'][0]['id']
+                
+                q2 = f"name='{subcarpeta}' and '{cli_id}' in parents and trashed=false"
+                r2 = gc_drive.files().list(q=q2, fields="files(id)").execute()
+                if not r2.get('files'): return [], None
+                sub_id = r2['files'][0]['id']
+                
+                q3 = f"'{sub_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
+                r3 = gc_drive.files().list(q=q3, fields="files(name)").execute()
+                return [a['name'] for a in r3.get('files', [])], sub_id
+            except: return [], None
+
+        def subir_a_drive_mem(file_obj, filename, folder_id):
+            if not gc_drive or not folder_id: return
+            from googleapiclient.http import MediaFileUpload
+            tp = f"temp_{filename}"
+            with open(tp, "wb") as f: f.write(file_obj.getbuffer())
+            meta = {'name': filename, 'parents': [folder_id]}
+            media = MediaFileUpload(tp, resumable=True)
+            gc_drive.files().create(body=meta, media_body=media, fields='id').execute()
+            if os.path.exists(tp): os.remove(tp)
+
+        def subir_doc_local_a_drive(ruta_local, filename, folder_id):
+            if not gc_drive or not folder_id: return
+            from googleapiclient.http import MediaFileUpload
+            meta = {'name': filename, 'parents': [folder_id]}
+            media = MediaFileUpload(ruta_local, resumable=True)
+            gc_drive.files().create(body=meta, media_body=media, fields='id').execute()
+        # ----------------------------------------------
+
         if senal == 0:
-            arch = os.listdir(r1)
-            st.markdown(f"<h3 style='font-size:18px;'>Fase 1: Recolección Documental ({len(arch)}/8)</h3>", unsafe_allow_html=True)
+            arch_drive, sub_id = obtener_archivos_y_id(cc_s, nom_s, "Financiero")
+            st.markdown(f"<h3 style='font-size:18px;'>Fase 1: Recolección Documental ({len(arch_drive)}/8)</h3>", unsafe_allow_html=True)
             docs = ["1. CÉDULA", "2. CERTIFICADO REDAM", "3. DATACRÉDITO", "4. CERTIFICADO SIMIT", "5. CERTIFICADO RAMA", "6. CERTIFICADO RUNT", "7. TRADICIÓN Y LIBERTAD", "8. CERTIFICADO RUES"]
             c_a, c_b = st.columns(2)
             for i, d in enumerate(docs):
                 col = c_a if i < 4 else c_b
-                if any(d.split(". ")[1] in f for f in arch): col.success(f"✔️ {d}")
+                if any(d.split(". ")[1] in f for f in arch_drive): 
+                    col.success(f"✔️ {d}")
                 else:
                     upl = col.file_uploader(f"📥 Subir: {d}", key=f"up_{i}")
-                    if upl:
-                        sub_id = obtener_id_subcarpeta_drive(cc_s, nom_s, "Financiero")
-                        if sub_id:
-                            subir_archivo_a_drive(upl, f"{d.split('. ')[1]}_{upl.name}", sub_id)
-                            df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 1
-                            guardar_tabla(df_cli, "clientes")
-                            st.rerun()
-        
+                    if upl and sub_id:
+                        nombre_archivo = f"{d.split('. ')[1]}_{upl.name}"
+                        with st.spinner(f"Subiendo {d} a Drive..."):
+                            subir_a_drive_mem(upl, nombre_archivo, sub_id)
+                            arch_drive, _ = obtener_archivos_y_id(cc_s, nom_s, "Financiero")
+                            if len(arch_drive) >= 8:
+                                df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 1
+                                guardar_tabla(df_cli, "clientes")
+                        st.rerun()
+                        
         elif senal == 1:
             st.markdown("<h3 style='font-size:18px;'>Fase 2: Motor de Contratos</h3>", unsafe_allow_html=True)
             with st.form("motor"):
                 ca, cb = st.columns(2)
                 with ca: abo = st.selectbox("Abogado Titular de la Firma", ABOGADOS)
-                with cb: h_n = st.text_input("Honorarios Totales ($)"); h_l = st.text_input("Honorarios (En Letras)")
+                with cb: h_n = st.text_input("Honorarios Totales (\$)"); h_l = st.text_input("Honorarios (En Letras)")
                 cc_col, cd, ce = st.columns(3)
-                with cc_col: cuo_n = st.text_input("Valor Cuota ($)"); cuo_l = st.text_input("Valor Cuota (Letras)")
+                with cc_col: cuo_n = st.text_input("Valor Cuota (\$)"); cuo_l = st.text_input("Valor Cuota (Letras)")
                 with cd: ciu_e = st.text_input("Ciudad Expedición C.C."); ciu_r = st.text_input("Ciudad Residencia Actual")
                 with ce: dir_r = st.text_input("Dirección de Residencia")
                 
-                if st.form_submit_button("GENERAR DOCUMENTOS Y ACTUALIZAR NUBE"):
+                if st.form_submit_button("GENERAR DOCUMENTOS Y SUBIR A NUBE"):
                     meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
                     dic_r = { "«NOMBRES»": nom_s, "«CEDULA»": cc_s, "«EXP_CC»": ciu_e, "«DIRECCION»": dir_r, "«CIUDAD_DIRECCION»": ciu_r, "«CORREO»": data_c.get("Email",""), "«TELEFONO»": tel_c, "«TOTAL_PAGO»": h_n, "«TOTAL_PAGO_LETRA»": h_l, "«VALOR_CUOTA»": cuo_n, "«VALOR_CUOTA_LETRA»": cuo_l, "«DIA»": str(hoy.day), "«MES»": meses[hoy.month - 1] }
                     rutas = { "CONTRATO": os.path.join(CARP_PLA, abo, "CONTRATO.docx"), "PODER_JUZGADO": os.path.join(CARP_PLA, abo, "PODER_JUZGADO.docx") }
                     
+                    _, sub_id_notaria = obtener_archivos_y_id(cc_s, nom_s, "Notaria")
+                    
                     err = False
-                    for n, r_p in rutas.items():
-                        if os.path.exists(r_p): motor_docx(r_p, os.path.join(r2, f"{n}_{nom_s}.docx"), dic_r)
-                        else: err = True; st.error(f"Falta plantilla {n} en carpeta {abo}.")
-                    if not err:
-                        if str(cc_s) not in df_fin["Cedula"].astype(str).values:
-                            nuevo_f = pd.concat([df_fin, pd.DataFrame([{"Cedula": str(cc_s), "Honorarios": str(h_n), "Abonado": "0"}])], ignore_index=True)
-                            guardar_tabla(nuevo_f, "finanzas")
-                        df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 2
-                        guardar_tabla(df_cli, "clientes"); st.rerun()
-        
+                    with st.spinner("Generando y subiendo contratos a Google Drive..."):
+                        for n, r_p in rutas.items():
+                            if os.path.exists(r_p): 
+                                temp_salida = f"temp_{n}_{nom_s}.docx"
+                                motor_docx(r_p, temp_salida, dic_r)
+                                if sub_id_notaria:
+                                    subir_doc_local_a_drive(temp_salida, f"{n}_{nom_s}.docx", sub_id_notaria)
+                                if os.path.exists(temp_salida): os.remove(temp_salida)
+                            else: 
+                                err = True; st.error(f"Falta plantilla {n} en carpeta {abo}.")
+                        
+                        if not err:
+                            if str(cc_s) not in df_fin["Cedula"].astype(str).values:
+                                nuevo_f = pd.concat([df_fin, pd.DataFrame([{"Cedula": str(cc_s), "Honorarios": str(h_n), "Abonado": "0"}])], ignore_index=True)
+                                guardar_tabla(nuevo_f, "finanzas")
+                            df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 2
+                            guardar_tabla(df_cli, "clientes"); st.rerun()
+
         elif senal == 2:
             st.markdown("<h3 style='font-size:18px;'>Fase 3: Recolección de Firmas</h3>", unsafe_allow_html=True)
-            for dg in os.listdir(r2):
-                ruta = os.path.join(r2, dg)
-                if os.path.isfile(ruta):
-                    with open(ruta, "rb") as f: st.download_button(f"📥 Imprimir Documento: {dg}", f, file_name=dg)
+            st.info("📌 Los contratos listos para firmar están arriba, en la Bóveda Central. Descárgalos de ahí y sube los firmados aquí abajo.")
+            
+            _, sub_id_notaria = obtener_archivos_y_id(cc_s, nom_s, "Notaria")
+            
             uf = st.file_uploader("📥 Subir Paquete de Contratos Firmados (PDF)", type=["pdf"])
-            if uf:
-                sub_id = obtener_id_subcarpeta_drive(cc_s, nom_s, "Notaria")
-                if sub_id:
-                    subir_archivo_a_drive(uf, f"Firmados_{uf.name}", sub_id)
+            if uf and sub_id_notaria:
+                with st.spinner("Subiendo a Drive..."):
+                    subir_a_drive_mem(uf, f"Firmados_{uf.name}", sub_id_notaria)
                     df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 3
-                    guardar_tabla(df_cli, "clientes")
-                    st.rerun()
-                
+                    guardar_tabla(df_cli, "clientes"); st.rerun()
+                    
         elif senal == 3:
             st.markdown("<h3 style='font-size:18px;'>Fase 4: Radicación Oficial del Expediente</h3>", unsafe_allow_html=True)
             st.info("📌 Los contratos ya están firmados. Sube aquí el comprobante de radicación oficial (Centro de Conciliación o Juzgado).")
             urad = st.file_uploader("📥 Subir Soporte de Radicado (PDF/IMG)", type=["pdf", "jpg", "png"])
-            if urad:
-                sub_id = obtener_id_subcarpeta_drive(cc_s, nom_s, "Juzgado")
-                if sub_id:
-                    subir_archivo_a_drive(urad, f"Radicado_{urad.name}", sub_id)
+            _, sub_id_juz = obtener_archivos_y_id(cc_s, nom_s, "Juzgado")
+            if urad and sub_id_juz:
+                with st.spinner("Subiendo Radicado a Drive..."):
+                    subir_a_drive_mem(urad, f"Radicado_{urad.name}", sub_id_juz)
                     df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 4
-                    guardar_tabla(df_cli, "clientes")
-                    st.rerun()
-                
+                    guardar_tabla(df_cli, "clientes"); st.rerun()
+                    
         elif senal >= 4: 
             st.success("✨ ¡Misión Cumplida! El expediente está oficialmente radicado y ha superado todas las fases documentales.")
-            archivos_rad = os.listdir(r3)
-            if archivos_rad:
-                for ar in archivos_rad:
-                    st.markdown(f"📄 **Soporte Oficial guardado:** `{ar}`")
-                
+            arch_juz, _ = obtener_archivos_y_id(cc_s, nom_s, "Juzgado")
+            if arch_juz:
+                for ar in arch_juz:
+                    if "Radicado" in ar:
+                        st.markdown(f"📄 **Soporte Oficial guardado en Drive:** `{ar}`")
+            
         st.markdown("</div>", unsafe_allow_html=True)
 
 # --- 4. ACTUACIONES ---
