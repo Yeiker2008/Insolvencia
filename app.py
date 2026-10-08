@@ -931,17 +931,22 @@ elif st.session_state.pagina_actual == 'Contratos':
         def subir_a_drive_mem(file_obj, filename, folder_id):
             if not gc_drive or not folder_id: return
             try:
-                from googleapiclient.http import MediaIoBaseUpload
-                bytes_data = file_obj.getvalue()
-                fh = io.BytesIO(bytes_data)
+                # Creamos un archivo temporal local seguro en el servidor
+                temp_path = f"temp_{filename}"
+                with open(temp_path, "wb") as f:
+                    f.write(file_obj.getbuffer())
                 
+                # Preparamos los metadatos y subimos usando el archivo físico temporal
                 meta = {'name': filename, 'parents': [folder_id]}
-                # Quitamos el resumable=True para que suba directo y rápido
-                media = MediaIoBaseUpload(fh, mimetype='application/pdf')
+                media = MediaFileUpload(temp_path, resumable=False)
                 
                 gc_drive.files().create(body=meta, media_body=media, fields='id').execute()
+                
+                # Limpiamos el archivo temporal de inmediato para no dejar basura
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
             except Exception as e:
-                print(f"Error en subir_a_drive_mem: {e}")
+                print(f"Error crítico subiendo a Drive: {e}")
 
         def subir_doc_local_a_drive(ruta_local, filename, folder_id):
             if not gc_drive or not folder_id: return
