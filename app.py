@@ -563,7 +563,8 @@ elif st.session_state.pagina_actual == 'Nuevo':
                             # 1. Renombrar la carpeta en el servidor si cambió el nombre o la cédula
                             old_path = estructurar_carpetas(cc_m, str(datos_c["Nombre"]))
                             new_path = os.path.join(CARP_EXP, f"{m_cc} - {m_nom}")
-                            if old_path != new
+                            if old_path != new_path and os.path.exists(old_path):
+                                os.rename(old_path, new_path)
     
 # --- 3. CONTRATOS E INICIO Y LAS 30 PLANTILLAS DE WHATSAPP ---
 elif st.session_state.pagina_actual == 'Contratos':
