@@ -1179,13 +1179,10 @@ elif st.session_state.pagina_actual == 'Sistema':
         
         # --- TERMINAL DE AUDITORÍA QUIRÚRGICA POR PERFIL ---
         st.markdown("<h3>🔍 Terminal de Auditoría Detallada por Usuario</h3>", unsafe_allow_html=True)
-        st.markdown("<p style='color: #64748B; font-size: 13px;'>Selecciona un colaborador para revisar el rastro exacto de todas sus operaciones (subidas de archivos, modificaciones, cambios y accesos).</p>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #64748B; font-size: 13px;'>Selecciona un colaborador activo para revisar el rastro exacto de todas sus operaciones.</p>", unsafe_allow_html=True)
         
-        # Extraer la lista de usuarios únicos que aparecen en los logs o en la tabla de usuarios
-        usuarios_auditables = sorted(df_usr["Alias"].unique().tolist()) if not df_usr.empty else []
-        if not df_log.empty and "Usuario" in df_log.columns:
-            logs_users = df_log["Usuario"].dropna().unique().tolist()
-            usuarios_auditables = sorted(list(set(usuarios_auditables + logs_users)))
+        # 🔥 SOLUCIÓN: Extraemos ÚNICAMENTE los usuarios que existen ACTUALMENTE en la base de datos
+        usuarios_auditables = sorted(df_usr["Alias"].dropna().unique().tolist()) if not df_usr.empty else []
             
         if usuarios_auditables:
             usuario_seleccionado = st.selectbox("👤 Seleccionar Colaborador a Auditar:", usuarios_auditables)
@@ -1207,6 +1204,6 @@ elif st.session_state.pagina_actual == 'Sistema':
                 else:
                     st.info("No hay registros de auditoría disponibles en la base de datos.")
         else:
-            st.warning("No hay usuarios registrados para auditar.")
+            st.warning("No hay usuarios activos registrados para auditar.")
             
         st.markdown("</div>", unsafe_allow_html=True)
