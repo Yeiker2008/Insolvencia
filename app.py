@@ -560,11 +560,20 @@ elif st.session_state.pagina_actual == 'Nuevo':
                         if str(m_cc) != str(cc_m) and str(m_cc) in df_cli["Cedula"].astype(str).values:
                             st.error(f"❌ La cédula {m_cc} ya le pertenece a otro cliente en el sistema.")
                         else:
-                            # 1. Renombrar la carpeta en el servidor si cambió el nombre o la cédula
-                            old_path = estructurar_carpetas(cc_m, str(datos_c["Nombre"]))
+                           # 1. Renombrar la carpeta en el servidor de forma SEGURA
+                            old_path = os.path.join(CARP_EXP, f"{cc_m} - {str(datos_c['Nombre'])}")
                             new_path = os.path.join(CARP_EXP, f"{m_cc} - {m_nom}")
-                            if old_path != new_path and os.path.exists(old_path):
-                                os.rename(old_path, new_path)
+                            
+                            if old_path != new_path:
+                                try:
+                                    # Solo la renombra si la vieja existe y la nueva AÚN NO existe
+                                    if os.path.exists(old_path) and not os.path.exists(new_path):
+                                        os.rename(old_path, new_path)
+                                except Exception:
+                                    pass # Si hay algún bloqueo del servidor, lo ignora y no se cae
+                                    
+                                # Aseguramos de que la nueva carpeta tenga sus subcarpetas listas
+                                estructurar_carpetas(str(m_cc), m_nom)
     
 # --- 3. CONTRATOS E INICIO Y LAS 30 PLANTILLAS DE WHATSAPP ---
 elif st.session_state.pagina_actual == 'Contratos':
