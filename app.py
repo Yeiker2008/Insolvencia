@@ -55,12 +55,12 @@ def conectar_gdrive():
     if not GDRIVE_DISPONIBLE: return None
     try:
         creds = Credentials(
-            None,
-            refresh_token=st.secrets["google_refresh_token"],
-            client_id=st.secrets["google_client_id"],
-            client_secret=st.secrets["google_client_secret"],
-            token_uri="https://oauth2.googleapis.com/token",
-            scopes=SCOPES
+            None,                                           # 1. token
+            st.secrets["google_refresh_token"],             # 2. refresh_token
+            "https://oauth2.googleapis.com/token",          # 3. token_uri
+            st.secrets["google_client_id"],                 # 4. client_id
+            st.secrets["google_client_secret"],             # 5. client_secret
+            SCOPES                                          # 6. scopes
         )
         drive_service = build('drive', 'v3', credentials=creds)
         return drive_service
