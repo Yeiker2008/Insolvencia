@@ -911,32 +911,46 @@ elif st.session_state.pagina_actual == 'Contratos':
         
         # --- MOTOR DE GOOGLE DRIVE PARA CONTRATOS ---
         def obtener_archivos_y_id(cc, nom, subcarpeta):
-            if not gc_drive: 
-                st.error("🚨 Error: No hay conexión global a Google Drive.")
-                return [], None
+            if not gc_drive: return [], None
+            nombre_cliente = f"{cc} - {nom}"
             try:
-                # 1. Buscar carpeta del cliente
-                q1 = f"name='{cc} - {nom}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and trashed=false"
-                r1 = gc_drive.files().list(q=q1, fields="files(id)").execute()
-                if not r1.get('files'): 
-                    st.warning(f"⚠️ No se encontró la carpeta principal para: {cc} - {nom} en la Bóveda de Drive.")
-                    return [], None
-                cli_id = r1['files'][0]['id']
+                # 1. Buscar si ya existe la carpeta principal del cliente (tomamos la más reciente si hay duplicadas)
+                q1 = f"name='{nombre_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and trashed=false"
+                r1 = gc_drive.files().list(q=q1, orderBy="createdTime desc", fields="files(id)").execute()
+                carpetas = r1.get('files', [])
                 
-                # 2. Buscar subcarpeta (ej: Financiero)
+                if not carpetas:
+                    # Si no existe ninguna, la creamos de cero con sus 4 subcarpetas
+                    meta_cli = {'name': nombre_cliente, 'parents': [CARPETA_RAIZ_DRIVE_ID], 'mimeType': 'application/vnd.google-apps.folder'}
+                    cli_creada = gc_drive.files().create(body=meta_cli, fields='id').execute()
+                    cli_id = cli_creada.get('id')
+                    
+                    for sub_nombre in ["Financiero", "Juzgado", "Notaria", "Acreedores"]:
+                        meta_sub = {'name': sub_nombre, 'parents': [cli_id], 'mimeType': 'application/vnd.google-apps.folder'}
+                        gc_drive.files().create(body=meta_sub, fields='id').execute()
+                else:
+                    cli_id = carpetas[0]['id']
+                
+                # 2. Buscar la subcarpeta específica (ej: Financiero)
                 q2 = f"name='{subcarpeta}' and '{cli_id}' in parents and trashed=false"
                 r2 = gc_drive.files().list(q=q2, fields="files(id)").execute()
-                if not r2.get('files'): 
-                    st.warning(f"⚠️ No se encontró la subcarpeta '{subcarpeta}' dentro de la carpeta del cliente.")
-                    return [], None
-                sub_id = r2['files'][0]['id']
+                subs = r2.get('files', [])
                 
-                # 3. Listar archivos existentes
+                if not subs:
+                    # Si falta la subcarpeta por alguna razón, la creamos de inmediato dentro del cliente
+                    meta_sub = {'name': subcarpeta, 'parents': [cli_id], 'mimeType': 'application/vnd.google-apps.folder'}
+                    sub_creada = gc_drive.files().create(body=meta_sub, fields='id').execute()
+                    sub_id = sub_creada.get('id')
+                else:
+                    sub_id = subs[0]['id']
+                
+                # 3. Listar archivos dentro de esa subcarpeta
                 q3 = f"'{sub_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
                 r3 = gc_drive.files().list(q=q3, fields="files(name)").execute()
                 return [a['name'] for a in r3.get('files', [])], sub_id
+                
             except Exception as e:
-                st.error(f"🚨 Error crítico buscando en Drive: {e}")
+                print(f"Error en obtener_archivos_y_id: {e}")
                 return [], None
 
         def subir_a_drive_mem(file_obj, filename, folder_id):
