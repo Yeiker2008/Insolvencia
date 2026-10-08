@@ -932,12 +932,12 @@ elif st.session_state.pagina_actual == 'Contratos':
             if not gc_drive or not folder_id: return
             try:
                 from googleapiclient.http import MediaIoBaseUpload
-                # Leemos los bytes directamente de la memoria de Streamlit sin tocar el disco
                 bytes_data = file_obj.getvalue()
                 fh = io.BytesIO(bytes_data)
                 
                 meta = {'name': filename, 'parents': [folder_id]}
-                media = MediaIoBaseUpload(fh, mimetype='application/octet-stream', resumable=True)
+                # Quitamos el resumable=True para que suba directo y rápido
+                media = MediaIoBaseUpload(fh, mimetype='application/pdf')
                 
                 gc_drive.files().create(body=meta, media_body=media, fields='id').execute()
             except Exception as e:
