@@ -28,7 +28,7 @@ except ImportError:
 
 # --- PODERES PARA GOOGLE DRIVE (LA BÓVEDA MAESTRA) ---
 try:
-    from google.oauth2.service_account import Credentials
+    from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
     import io
@@ -43,13 +43,13 @@ SCOPES = [
     'https://www.googleapis.com/auth/drive'
 ]
 
-# ID de tu Bóveda Maestra en Drive (¡REEMPLAZA ESTO!)
+# ID de tu Bóveda Maestra en Drive
 CARPETA_RAIZ_DRIVE_ID = "1MC6wHXaV557prpKV-KCRc8yeCdphD6U8"
 
-# ID de la Papelera en Drive (¡NUEVO!)
+# ID de la Papelera en Drive
 CARPETA_PAPELERA_DRIVE_ID = "1MGBXOKbPuAE6xsf53AcCjwMFE_yzDbir"
 
-# Conexión Global a Google Drive usando tus credenciales OAuth personales
+# Conexión Global a Google Drive usando tus credenciales OAuth personales (100% gratis)
 @st.cache_resource
 def conectar_gdrive():
     if not GDRIVE_DISPONIBLE: return None
@@ -127,7 +127,7 @@ def restaurar_de_papelera_drive(cc, nom):
         return False
 
 def obtener_id_subcarpeta_drive(cc, nom, nombre_subcarpeta):
-    """Busca y retorna el ID de la subcarpeta interna (ej: '01_Docs_Viabilidad') en Google Drive"""
+    """Busca y retorna el ID de la subcarpeta interna en Google Drive"""
     if not gc_drive: return None
     nombre_carpeta_cliente = f"{cc} - {nom}"
     try:
@@ -152,7 +152,6 @@ def subir_archivo_a_drive(file_obj, filename, folder_id):
     """Sube un archivo cargado desde Streamlit directamente a una carpeta de Google Drive"""
     if not gc_drive or not folder_id: return False
     try:
-        # Guardar archivo temporal en disco local para transferir a la API
         temp_path = f"temp_{filename}"
         with open(temp_path, "wb") as f:
             f.write(file_obj.getbuffer())
@@ -240,7 +239,6 @@ def conectar_gsheets():
 
 gc_sheet = conectar_gsheets()
 
-# Inyectamos Caché Ultrarrápida (Guarda en RAM por 2 minutos o hasta que haya cambios)
 @st.cache_data(ttl=120, show_spinner=False)
 def leer_tabla(nombre_tabla, columnas_def):
     if gc_sheet:
@@ -270,11 +268,10 @@ def guardar_tabla(df, nombre_tabla):
         except Exception as e:
             print(f"Error guardando en GSheets {nombre_tabla}: {e}")
             
-    # MAGIA: Vaciamos la RAM para que la app descargue los datos frescos de inmediato
     leer_tabla.clear()
 
 # ==========================================
-# 2. MOTOR CSS: SAAS CORPORATIVO LIMPIO (ANTI-FATIGA VISUAL + ANIMACIONES 3D)
+# 2. MOTOR CSS: SAAS CORPORATIVO LIMPIO
 # ==========================================
 st.markdown("""
     <style>
@@ -282,33 +279,28 @@ st.markdown("""
     #MainMenu, footer, header {visibility: hidden !important; display: none !important;}
     [data-testid="stHeader"] {display: none !important; visibility: hidden !important;}
     
-    /* Fuentes y fondos generales (Área de trabajo clara) */
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; background-color: #F8FAFC !important; color: #1E293B !important; }
     h1, h2, h3 { color: #0F172A !important; font-weight: 700; letter-spacing: -0.5px; }
     [data-testid="stAppViewContainer"] { background-color: #F4F7F8 !important; background-image: none !important; }
     
-    /* Sidebar: Oscuro y elegante */
     [data-testid="stSidebar"] { background-color: #0F172A !important; border-right: 1px solid #1E293B !important; }
-    /* Textos del sidebar (Títulos y párrafos) en blanco, sin dañar los inputs ni botones */
     [data-testid="stSidebar"] p, [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3, [data-testid="stSidebar"] span, [data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] { color: #F8FAFC !important; }
     
-    /* 🔥 BOTONES DEL SIDEBAR: Visibles, elegantes y con animación de agrandado */
     [data-testid="stSidebar"] div.stButton > button:first-child {
-        background-color: #1E293B !important; /* Fondo oscuro sutil */
-        color: #F8FAFC !important; /* Letras blancas siempre visibles */
+        background-color: #1E293B !important;
+        color: #F8FAFC !important;
         border: 1px solid #334155 !important;
-        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important; /* Transición súper suave */
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
     }
     [data-testid="stSidebar"] div.stButton > button:first-child:hover {
-        background-color: #2563EB !important; /* Azul eléctrico al pasar el mouse */
+        background-color: #2563EB !important;
         border-color: #2563EB !important;
         color: #FFFFFF !important; 
-        transform: scale(1.05) !important; /* EFECTO 3D: EL BOTÓN SE AGRANDA */
-        box-shadow: 0 5px 15px rgba(37,99,235,0.4) !important; /* Brillo azul */
+        transform: scale(1.05) !important;
+        box-shadow: 0 5px 15px rgba(37,99,235,0.4) !important;
         z-index: 10;
     }
 
-    /* 🔥 BOTONES DEL ÁREA PRINCIPAL: Blancos con azul y animación de agrandado */
     div.stButton > button:first-child { 
         background: #FFFFFF !important; 
         color: #2563EB !important; 
@@ -324,10 +316,9 @@ st.markdown("""
         background: #2563EB !important; 
         color: #FFFFFF !important; 
         box-shadow: 0 8px 20px rgba(37,99,235,0.3) !important; 
-        transform: scale(1.03) translateY(-2px) !important; /* EFECTO 3D: SE AGRANDA Y SE LEVANTA */
+        transform: scale(1.03) translateY(-2px) !important;
     }
     
-    /* Tarjetas de Módulos */
     .module-card { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 30px; margin-bottom: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03); }
     .module-card p { color: #475569 !important; } 
     
@@ -335,11 +326,9 @@ st.markdown("""
     .module-card-blue { border-top: 3px solid #0EA5E9 !important; }
     .module-card-green { border-top: 3px solid #10B981 !important; }
     
-    /* Inputs y Formularios: Blancos con borde gris oscuro para que se vean en cualquier lado */
     input, textarea, select, div[data-baseweb="select"] > div, div[data-baseweb="input"] > div { background-color: #FFFFFF !important; color: #0F172A !important; -webkit-text-fill-color: #0F172A !important; border: 1px solid #94A3B8 !important; border-radius: 6px !important; }
     input:focus, textarea:focus { border-color: #2563EB !important; box-shadow: 0 0 0 2px rgba(37,99,235,0.2) !important; }
     
-    /* Línea de Tiempo de Fases */
     .timeline { display: flex; justify-content: space-between; align-items: center; margin: 30px 0; position: relative; }
     .timeline::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: #E2E8F0; z-index: 1; }
     .step { position: relative; z-index: 2; background: #F8FAFC; padding: 8px 16px; border-radius: 20px; border: 2px solid #E2E8F0; color: #64748B; font-weight: 600; font-size: 12px; display: flex; align-items: center; text-transform: uppercase; }
@@ -405,19 +394,16 @@ def registrar_log(modulo, accion):
     except: pass
 
 def estructurar_carpetas(cc, nom):
-    # Si por alguna razón no hay conexión a Drive, cancela para no causar errores
     if not gc_drive: return False
     
     nombre_carpeta_cliente = f"{cc} - {nom}"
     
     try:
-        # 1. Verificar si el cliente ya tiene carpeta en Drive para no duplicarla
         query = f"name='{nombre_carpeta_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
         resultados = gc_drive.files().list(q=query, fields="files(id, name)").execute()
         archivos = resultados.get('files', [])
         
         if not archivos:
-            # 2. Si no existe, crear la carpeta principal del cliente en la Bóveda Maestra
             metadata_cliente = {
                 'name': nombre_carpeta_cliente,
                 'parents': [CARPETA_RAIZ_DRIVE_ID],
@@ -426,7 +412,6 @@ def estructurar_carpetas(cc, nom):
             carpeta_cliente = gc_drive.files().create(body=metadata_cliente, fields='id').execute()
             cliente_id = carpeta_cliente.get('id')
             
-            # 3. Crear las subcarpetas internas obligatorias
             subcarpetas = ["Financiero", "Juzgado", "Notaria", "Acreedores"]
             for sub in subcarpetas:
                 metadata_sub = {
@@ -600,7 +585,7 @@ with st.sidebar:
     if st.button("📝 Apertura de Casos", key="b_nuev"): cambiar_pagina("Nuevo")
     if st.button("📅 Agenda y Citas", key="b_agen"): cambiar_pagina("Agenda")
     if st.button("✅ Gestor de Tareas", key="b_tar"): cambiar_pagina("Tareas")
-    if st.button("🗑️ Papelera de Reciclaje", key="b_pap"): cambiar_pagina("Papelera") # <-- ESTA ES LA LÍNEA NUEVA
+    if st.button("🗑️ Papelera de Reciclaje", key="b_pap"): cambiar_pagina("Papelera")
     
     st.markdown("<br><p style='color:#71717A; font-size:11px; font-weight:bold; letter-spacing:1px;'>⚖️ OPERACIÓN JURÍDICA</p>", unsafe_allow_html=True)
     if st.button("⚙️ Contratos y Docs", key="b_cont"): cambiar_pagina("Contratos")
@@ -620,7 +605,7 @@ with st.sidebar:
     if st.button("🚪 Cerrar Sesión"): st.session_state.autenticado = False; st.rerun()
 
 # ==========================================
-# 6. MÓDULOS DE LA APLICACIÓN (TODOS INTACTOS)
+# 6. MÓDULOS DE LA APLICACIÓN
 # ==========================================
 
 # --- 1. PORTAL EJECUTIVO ---
@@ -670,7 +655,6 @@ if st.session_state.pagina_actual == 'Dashboard':
         if not hay_alertas: st.success("✨ Expedientes fluyendo con normalidad.")
         st.markdown("</div>", unsafe_allow_html=True)
         
-    # --- ZONA DE PELIGRO: MOVER A PAPELERA ---
     st.markdown("<hr style='border-color: #27272A;'><h3 style='color:#EF4444;'>⚠️ Zona de Peligro: Gestión de Archivo</h3>", unsafe_allow_html=True)
     st.markdown("<div class='module-card'>", unsafe_allow_html=True)
     if not df_activos.empty:
@@ -678,19 +662,17 @@ if st.session_state.pagina_actual == 'Dashboard':
             cliente_a_borrar = st.selectbox("Seleccionar expediente para mover a la Papelera:", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"])
             if st.form_submit_button("MOVER A LA PAPELERA"):
                 cc_b = cliente_a_borrar.split(" - ")[0]
-                nom_b = cliente_a_borrar.split(" - ")[1] # Extraemos el nombre para Google Drive
+                nom_b = cliente_a_borrar.split(" - ")[1]
                 
-                # 1. Cambiar estado a "Borrado" en Google Sheets
                 df_cli.loc[df_cli["Cedula"].astype(str) == cc_b, "Estado"] = "Borrado"
                 df_cli.loc[df_cli["Cedula"].astype(str) == cc_b, "F_Borrado"] = hoy.strftime("%Y-%m-%d")
                 guardar_tabla(df_cli, "clientes")
                 
-                # 2. 🔥 LA MAGIA DE GOOGLE DRIVE 🔥: Mover carpeta a la Papelera de Drive
                 mover_a_papelera_drive(str(cc_b), nom_b)
                 
                 registrar_log("SISTEMA", f"Expediente y carpeta enviados a papelera: {cc_b}")
                 st.success("¡Expediente movido a la papelera correctamente en Sheets y Drive!")
-                time.sleep(1.5) # Pausa corta para que se vea el mensaje
+                time.sleep(1.5)
                 st.rerun()
     else:
         st.info("No hay clientes activos para archivar.")
@@ -700,12 +682,8 @@ if st.session_state.pagina_actual == 'Dashboard':
 elif st.session_state.pagina_actual == 'Nuevo':
     st.markdown("<h1>Gestión de Expedientes</h1>", unsafe_allow_html=True)
     
-    # Creamos las dos pestañas de navegación
     tab_nuevo, tab_editar = st.tabs(["➕ Apertura de Nuevo Caso", "✏️ Modificar Expediente Existente"])
     
-    # ---------------------------------------------
-    # PESTAÑA 1: CREAR NUEVO
-    # ---------------------------------------------
     with tab_nuevo:
         st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
         with st.form("nuevo_exp"):
@@ -739,13 +717,9 @@ elif st.session_state.pagina_actual == 'Nuevo':
                     st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
         
-   # ---------------------------------------------
-    # PESTAÑA 2: MODIFICAR CLIENTE (BLINDADO CONTRA TYPEERROR)
-    # ---------------------------------------------
     with tab_editar:
         st.markdown("<div class='module-card module-card-blue'>", unsafe_allow_html=True)
         
-        # Leemos los datos en vivo para asegurar refresco
         df_frescos = leer_tabla("clientes", ["Cedula", "Nombre", "Fuerza", "Telefono", "Email", "Deuda_Est", "Ingresos", "Senal", "F_Actualizacion", "Estado", "F_Borrado"])
         df_act_frescos = df_frescos[df_frescos["Estado"] == "Activo"].copy()
         
@@ -779,7 +753,6 @@ elif st.session_state.pagina_actual == 'Nuevo':
                         st.error(f"❌ La cédula {m_cc} ya pertenece a otro expediente en el sistema.")
                     else:
                         with st.spinner("Modificando cliente en Google Sheets..."):
-                            # 1. Renombrar carpeta física
                             old_path = os.path.join(CARP_EXP, f"{cc_original} - {str(datos_c['Nombre'])}")
                             new_path = os.path.join(CARP_EXP, f"{m_cc} - {m_nom}")
                             if old_path != new_path:
@@ -789,7 +762,6 @@ elif st.session_state.pagina_actual == 'Nuevo':
                                 except Exception: pass
                                 estructurar_carpetas(str(m_cc), m_nom)
                             
-                            # 2. CONVERSIÓN OBLIGATORIA A TEXTO DE TODA LA TABLA (SOLUCIÓN A TYPEERROR)
                             df_frescos = df_frescos.astype(str)
                             
                             idx_filas = df_frescos.index[df_frescos["Cedula"] == str(cc_original)].tolist()
@@ -805,12 +777,11 @@ elif st.session_state.pagina_actual == 'Nuevo':
                                 
                                 guardar_tabla(df_frescos, "clientes")
                             
-                            # 3. Efecto Cascada en las demás tablas
                             for t_nom, t_cols in [("finanzas", ["Cedula", "Honorarios", "Abonado"]), 
-                                                   ("actuaciones", ["ID_Act", "Cedula", "Fecha", "Tipo", "Juzgado", "Radicado", "Anotacion"]),
-                                                   ("vencimientos", ["ID_Ven", "Cedula", "Cliente", "Asunto", "Fecha_Limite", "Estado"]),
-                                                   ("acreedores", ["ID_Acr", "Cedula", "Acreedor", "Cuantia", "Clase"]),
-                                                   ("audiencias", ["ID_Aud", "Cedula", "Cliente", "Fecha_Hora", "Motivo"])]:
+                                                  ("actuaciones", ["ID_Act", "Cedula", "Fecha", "Tipo", "Juzgado", "Radicado", "Anotacion"]),
+                                                  ("vencimientos", ["ID_Ven", "Cedula", "Cliente", "Asunto", "Fecha_Limite", "Estado"]),
+                                                  ("acreedores", ["ID_Acr", "Cedula", "Acreedor", "Cuantia", "Clase"]),
+                                                  ("audiencias", ["ID_Aud", "Cedula", "Cliente", "Fecha_Hora", "Motivo"])]:
                                 df_t = leer_tabla(t_nom, t_cols)
                                 if not df_t.empty and str(cc_original) in df_t["Cedula"].astype(str).values:
                                     df_t = df_t.astype(str)
@@ -829,7 +800,7 @@ elif st.session_state.pagina_actual == 'Nuevo':
             st.info("No hay clientes activos para modificar.")
         st.markdown("</div>", unsafe_allow_html=True)
                             
-# --- 3. CONTRATOS E INICIO Y LAS 30 PLANTILLAS DE WHATSAPP ---
+# --- 3. CONTRATOS Y PLANTILLAS ---
 elif st.session_state.pagina_actual == 'Contratos':
     st.markdown("<h1>Gestión Documental y Contratos</h1>", unsafe_allow_html=True)
     if not df_activos.empty:
@@ -844,7 +815,6 @@ elif st.session_state.pagina_actual == 'Contratos':
         c1, c2, c3, c4 = ["completed" if senal >= i else ("active" if senal == i-1 else "") for i in range(1, 5)]
         st.markdown(f'<div class="module-card" style="padding: 10px 30px;"><div class="timeline"><div class="step {c1}">1. Viabilidad</div><div class="step {c2}">2. Ensamblaje</div><div class="step {c3}">3. Firmas</div><div class="step {c4}">4. Radicado</div></div></div>', unsafe_allow_html=True)
         
-        # --- CENTRAL DE WHATSAPP CON LAS 30 PLANTILLAS ORIGINALES ---
         st.markdown("<div class='module-card' style='border-top: 3px solid #10B981;'>", unsafe_allow_html=True)
         st.markdown("<h3>📱 Central Automática de WhatsApp</h3>", unsafe_allow_html=True)
         
@@ -911,20 +881,16 @@ elif st.session_state.pagina_actual == 'Contratos':
         st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
-        st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
         
-        # --- MOTOR DE GOOGLE DRIVE PARA CONTRATOS ---
         def obtener_archivos_y_id(cc, nom, subcarpeta):
             if not gc_drive: return [], None
             nombre_cliente = f"{cc} - {nom}"
             try:
-                # 1. Buscar si ya existe la carpeta principal del cliente (tomamos la más reciente si hay duplicadas)
                 q1 = f"name='{nombre_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and trashed=false"
                 r1 = gc_drive.files().list(q=q1, orderBy="createdTime desc", fields="files(id)").execute()
                 carpetas = r1.get('files', [])
                 
                 if not carpetas:
-                    # Si no existe ninguna, la creamos de cero con sus 4 subcarpetas
                     meta_cli = {'name': nombre_cliente, 'parents': [CARPETA_RAIZ_DRIVE_ID], 'mimeType': 'application/vnd.google-apps.folder'}
                     cli_creada = gc_drive.files().create(body=meta_cli, fields='id').execute()
                     cli_id = cli_creada.get('id')
@@ -935,20 +901,17 @@ elif st.session_state.pagina_actual == 'Contratos':
                 else:
                     cli_id = carpetas[0]['id']
                 
-                # 2. Buscar la subcarpeta específica (ej: Financiero)
                 q2 = f"name='{subcarpeta}' and '{cli_id}' in parents and trashed=false"
                 r2 = gc_drive.files().list(q=q2, fields="files(id)").execute()
                 subs = r2.get('files', [])
                 
                 if not subs:
-                    # Si falta la subcarpeta por alguna razón, la creamos de inmediato dentro del cliente
                     meta_sub = {'name': subcarpeta, 'parents': [cli_id], 'mimeType': 'application/vnd.google-apps.folder'}
                     sub_creada = gc_drive.files().create(body=meta_sub, fields='id').execute()
                     sub_id = sub_creada.get('id')
                 else:
                     sub_id = subs[0]['id']
                 
-                # 3. Listar archivos dentro de esa subcarpeta
                 q3 = f"'{sub_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
                 r3 = gc_drive.files().list(q=q3, fields="files(name)").execute()
                 return [a['name'] for a in r3.get('files', [])], sub_id
@@ -960,32 +923,18 @@ elif st.session_state.pagina_actual == 'Contratos':
         def subir_a_drive_mem(file_obj, filename, folder_id):
             if not gc_drive or not folder_id: return
             try:
-                # Creamos un archivo temporal local seguro en el servidor
                 temp_path = f"temp_{filename}"
                 with open(temp_path, "wb") as f:
                     f.write(file_obj.getbuffer())
                 
-                # Preparamos los metadatos y subimos usando el archivo físico temporal
                 meta = {'name': filename, 'parents': [folder_id]}
                 media = MediaFileUpload(temp_path, resumable=False)
-                
                 gc_drive.files().create(body=meta, media_body=media, fields='id').execute()
                 
-                # Limpiamos el archivo temporal de inmediato para no dejar basura
                 if os.path.exists(temp_path):
                     os.remove(temp_path)
             except Exception as e:
                 print(f"Error crítico subiendo a Drive: {e}")
-
-        def subir_doc_local_a_drive(ruta_local, filename, folder_id):
-            if not gc_drive or not folder_id: return
-            try:
-                from googleapiclient.http import MediaFileUpload
-                meta = {'name': filename, 'parents': [folder_id]}
-                media = MediaFileUpload(ruta_local, resumable=True)
-                gc_drive.files().create(body=meta, media_body=media, fields='id').execute()
-            except Exception as e:
-                print(f"Error en subir_doc_local_a_drive: {e}")
 
         if senal == 0:
             nombre_cliente = f"{cc_s} - {nom_s}"
@@ -1033,39 +982,31 @@ elif st.session_state.pagina_actual == 'Contratos':
                 col = c_a if i < 4 else c_b
                 nombre_corto = d.split(". ")[1]
                 
-                # Verificamos si ya está registrado en Google Drive
                 if any(nombre_corto in f for f in arch_drive): 
                     col.success(f"✔️ {d}")
                 else:
                     upl = col.file_uploader(f"📥 Subir: {d}", key=f"auto_up_{cc_s}_{i}")
                     file_key = f"procesando_{cc_s}_{i}"
                     
-                    # Si el usuario seleccionó un archivo y no se ha procesado en esta sesión...
                     if upl is not None and st.session_state.get(file_key) != upl.name:
                         if sub_id and gc_drive:
                             with st.spinner(f"Subiendo {d} a Google Drive..."):
                                 try:
-                                    # Nombre limpio para el archivo en la nube
                                     nombre_archivo = f"{nombre_corto}_{upl.name}"
                                     temp_path = f"temp_{cc_s}_{i}_{int(time.time())}.pdf"
                                     
-                                    # Guardamos temporalmente el buffer en disco
                                     with open(temp_path, "wb") as f:
                                         f.write(upl.getbuffer())
                                     
-                                    # Subida directa mediante la API de Google Drive
                                     meta = {'name': nombre_archivo, 'parents': [sub_id]}
                                     media = MediaFileUpload(temp_path, resumable=False)
                                     gc_drive.files().create(body=meta, media_body=media, fields='id').execute()
                                     
-                                    # Limpieza de archivo temporal local
                                     if os.path.exists(temp_path): 
                                         os.remove(temp_path)
                                     
-                                    # Marcamos este archivo como procesado para evitar bucles
                                     st.session_state[file_key] = upl.name
                                     
-                                    # Verificamos si completó los 8 documentos en Drive
                                     q_check = f"'{sub_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
                                     r_check = gc_drive.files().list(q=q_check, fields="files(name)").execute()
                                     arch_actualizados = [a['name'] for a in r_check.get('files', [])]
@@ -1085,24 +1026,32 @@ elif st.session_state.pagina_actual == 'Contratos':
             
             _, sub_id_notaria = obtener_archivos_y_id(cc_s, nom_s, "Notaria")
             
-            uf = st.file_uploader("📥 Subir Paquete de Contratos Firmados (PDF)", type=["pdf"])
-            if uf and sub_id_notaria:
-                with st.spinner("Subiendo a Drive..."):
+            uf = st.file_uploader("📥 Subir Paquete de Contratos Firmados (PDF)", type=["pdf"], key=f"up_firmados_{cc_s}")
+            file_key_f = f"procesando_firmados_{cc_s}"
+            if uf and sub_id_notaria and st.session_state.get(file_key_f) != uf.name:
+                with st.spinner("Subiendo contratos firmados automáticamente a Drive..."):
                     subir_a_drive_mem(uf, f"Firmados_{uf.name}", sub_id_notaria)
+                    st.session_state[file_key_f] = uf.name
                     df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 3
-                    guardar_tabla(df_cli, "clientes"); st.rerun()
-                    
+                    guardar_tabla(df_cli, "clientes")
+                st.success("¡Contratos firmados subidos automáticamente!")
+                st.rerun()
+                
         elif senal == 3:
             st.markdown("<h3 style='font-size:18px;'>Fase 4: Radicación Oficial del Expediente</h3>", unsafe_allow_html=True)
             st.info("📌 Los contratos ya están firmados. Sube aquí el comprobante de radicación oficial (Centro de Conciliación o Juzgado).")
-            urad = st.file_uploader("📥 Subir Soporte de Radicado (PDF/IMG)", type=["pdf", "jpg", "png"])
+            urad = st.file_uploader("📥 Subir Soporte de Radicado (PDF/IMG)", type=["pdf", "jpg", "png"], key=f"up_radicado_{cc_s}")
+            file_key_r = f"procesando_radicado_{cc_s}"
             _, sub_id_juz = obtener_archivos_y_id(cc_s, nom_s, "Juzgado")
-            if urad and sub_id_juz:
-                with st.spinner("Subiendo Radicado a Drive..."):
+            if urad and sub_id_juz and st.session_state.get(file_key_r) != urad.name:
+                with st.spinner("Subiendo radicado automáticamente a Drive..."):
                     subir_a_drive_mem(urad, f"Radicado_{urad.name}", sub_id_juz)
+                    st.session_state[file_key_r] = urad.name
                     df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 4
-                    guardar_tabla(df_cli, "clientes"); st.rerun()
-                    
+                    guardar_tabla(df_cli, "clientes")
+                st.success("¡Radicado subido automáticamente!")
+                st.rerun()
+                
         elif senal >= 4: 
             st.success("✨ ¡Misión Cumplida! El expediente está oficialmente radicado y ha superado todas las fases documentales.")
             arch_juz, _ = obtener_archivos_y_id(cc_s, nom_s, "Juzgado")
@@ -1245,31 +1194,26 @@ elif st.session_state.pagina_actual == 'Finanzas':
     else:
         st.markdown("<h1>💰 Finanzas y Facturación Cloud</h1>", unsafe_allow_html=True)
         
-        # --- MOTOR GENERADOR DE FACTURAS PRO ---
         def generar_factura_pdf(nombre, cc, total, abono, saldo, recibo_id):
             pdf = FPDF()
             pdf.add_page()
-            # Borde de página estético
             pdf.rect(5.0, 5.0, 200.0, 287.0)
             
             def cln(t): return str(t).encode('latin-1', 'replace').decode('latin-1')
             
-            # Encabezado Oficial
             pdf.set_font("Helvetica", 'B', 20)
-            pdf.set_text_color(212, 175, 55) # Color Dorado
+            pdf.set_text_color(212, 175, 55)
             pdf.cell(0, 15, txt=cln("FIRMA JURÍDICA - INSOLVENCIA OS"), ln=True, align='C')
             pdf.set_font("Helvetica", 'B', 14)
             pdf.set_text_color(50, 50, 50)
             pdf.cell(0, 8, txt=cln("RECIBO DE CAJA / COMPROBANTE DE INGRESO"), ln=True, align='C')
             pdf.ln(5)
             
-            # Datos del Documento
             pdf.set_font("Helvetica", 'B', 10)
             pdf.cell(0, 6, txt=cln(f"Recibo No: {recibo_id}"), ln=True, align='R')
             pdf.cell(0, 6, txt=cln(f"Fecha de Emisión: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"), ln=True, align='R')
             pdf.ln(10)
             
-            # Cuadro 1: Datos del Cliente
             pdf.set_fill_color(240, 240, 240)
             pdf.set_font("Helvetica", 'B', 12)
             pdf.cell(0, 8, txt=cln(" DATOS DEL CLIENTE"), ln=True, align='L', fill=True)
@@ -1278,14 +1222,12 @@ elif st.session_state.pagina_actual == 'Finanzas':
             pdf.cell(0, 6, txt=cln(f" Cédula de Identidad: {cc}"), ln=True)
             pdf.ln(5)
             
-            # Cuadro 2: Concepto del Servicio
             pdf.set_font("Helvetica", 'B', 12)
             pdf.cell(0, 8, txt=cln(" DETALLES DEL SERVICIO"), ln=True, align='L', fill=True)
             pdf.set_font("Helvetica", '', 11)
             pdf.multi_cell(0, 6, txt=cln("Concepto: Abono a honorarios profesionales por representación jurídica integral en trámite de insolvencia económica persona natural no comerciante (Ley 1564 de 2012)."))
             pdf.ln(5)
             
-            # Cuadro 3: Desglose Contable
             pdf.set_font("Helvetica", 'B', 12)
             pdf.cell(0, 8, txt=cln(" DESGLOSE FINANCIERO"), ln=True, align='L', fill=True)
             pdf.ln(2)
@@ -1293,28 +1235,27 @@ elif st.session_state.pagina_actual == 'Finanzas':
             pdf.set_font("Helvetica", '', 11)
             pdf.cell(95, 8, txt=cln("Valor Total de Honorarios (Contrato):"), border=1)
             pdf.set_font("Helvetica", 'B', 11)
-            pdf.cell(95, 8, txt=cln(f"$ {total:,.0f}"), border=1, ln=True, align='R')
+            pdf.cell(95, 8, txt=cln(f"\$ {total:,.0f}"), border=1, ln=True, align='R')
             
             pdf.set_font("Helvetica", '', 11)
             pdf.cell(95, 8, txt=cln("Saldo Pendiente Anterior:"), border=1)
             pdf.set_font("Helvetica", 'B', 11)
-            pdf.cell(95, 8, txt=cln(f"$ {(saldo + abono):,.0f}"), border=1, ln=True, align='R')
+            pdf.cell(95, 8, txt=cln(f"\$ {(saldo + abono):,.0f}"), border=1, ln=True, align='R')
             
-            pdf.set_fill_color(212, 175, 55) # Dorado
+            pdf.set_fill_color(212, 175, 55)
             pdf.set_text_color(255, 255, 255)
             pdf.set_font("Helvetica", 'B', 12)
             pdf.cell(95, 10, txt=cln("VALOR ABONADO (ESTE RECIBO):"), border=1, fill=True)
-            pdf.cell(95, 10, txt=cln(f"$ {abono:,.0f}"), border=1, ln=True, align='R', fill=True)
+            pdf.cell(95, 10, txt=cln(f"\$ {abono:,.0f}"), border=1, ln=True, align='R', fill=True)
             
             pdf.set_text_color(0, 0, 0)
             pdf.set_font("Helvetica", '', 11)
             pdf.cell(95, 8, txt=cln("NUEVO SALDO PENDIENTE:"), border=1)
             pdf.set_font("Helvetica", 'B', 11)
-            pdf.cell(95, 8, txt=cln(f"$ {saldo:,.0f}"), border=1, ln=True, align='R')
+            pdf.cell(95, 8, txt=cln(f"\$ {saldo:,.0f}"), border=1, ln=True, align='R')
             
             pdf.ln(20)
             
-            # Firmas
             pdf.set_font("Helvetica", 'B', 11)
             pdf.cell(95, 6, txt="__________________________________", align='C')
             pdf.cell(95, 6, txt="__________________________________", ln=True, align='C')
@@ -1330,7 +1271,6 @@ elif st.session_state.pagina_actual == 'Finanzas':
             pdf.output(filename)
             return filename
         
-        # --- LÓGICA DE FINANZAS ---
         df_f_n = df_fin.merge(df_activos[['Cedula', 'Nombre', 'Telefono']], on='Cedula', how='inner') if not df_fin.empty else pd.DataFrame()
         if not df_f_n.empty:
             st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
@@ -1345,35 +1285,30 @@ elif st.session_state.pagina_actual == 'Finanzas':
                 abo_t = limpiar_num(dat_f['Abonado'])
                 saldo_actual = hon_t - abo_t
                 
-                st.metric("Saldo Pendiente Actual", f"$ {saldo_actual:,.0f}")
+                st.metric("Saldo Pendiente Actual", f"\$ {saldo_actual:,.0f}")
                 
                 with st.form("abono"):
-                    n_abo = st.number_input("Registrar Abono Actual ($)", min_value=0, step=50000)
+                    n_abo = st.number_input("Registrar Abono Actual (\$)", min_value=0, step=50000)
                     if st.form_submit_button("ACTUALIZAR CONTABILIDAD Y GENERAR FACTURA"):
                         if n_abo > 0:
                             nuevo_abonado = abo_t + n_abo
                             nuevo_saldo = hon_t - nuevo_abonado
                             
-                            # 1. Actualizar BD en Google Sheets
                             df_fu = leer_tabla("finanzas", ["Cedula", "Honorarios", "Abonado"])
                             df_fu.loc[df_fu["Cedula"].astype(str) == cc_f, "Abonado"] = str(int(nuevo_abonado))
                             guardar_tabla(df_fu, "finanzas")
                             
-                            # 2. Generar Recibo ID
                             recibo_id = f"REC-{hoy.strftime('%Y%m%d%H%M%S')}"
                             
-                            # 3. Generar PDF Pro
                             pdf_path = generar_factura_pdf(nom_f, cc_f, hon_t, n_abo, nuevo_saldo, recibo_id)
                             st.session_state['ultimo_pdf_factura'] = pdf_path
                             
-                            # 4. Generar Link de WhatsApp
-                            msg_wa = f"⚖️ *FIRMA JURÍDICA - INSOLVENCIA OS* ⚖️%0A%0AEstimado/a *{nom_f}*, desde el departamento financiero confirmamos la recepción exitosa de su pago.%0A%0A💰 *Abono registrado:* ${n_abo:,.0f}%0A📉 *Nuevo saldo pendiente:* ${nuevo_saldo:,.0f}%0A%0ASu recibo de caja oficial No. {recibo_id} ha sido generado en nuestro sistema. %0A%0A¡Gracias por su cumplimiento y confianza en nuestro equipo!"
+                            msg_wa = f"⚖️ *FIRMA JURÍDICA - INSOLVENCIA OS* ⚖️%0A%0AEstimado/a *{nom_f}*, desde el departamento financiero confirmamos la recepción exitosa de su pago.%0A%0A💰 *Abono registrado:* \${n_abo:,.0f}%0A📉 *Nuevo saldo pendiente:* \${nuevo_saldo:,.0f}%0A%0ASu recibo de caja oficial No. {recibo_id} ha sido generado en nuestro sistema. %0A%0A¡Gracias por su cumplimiento y confianza en nuestro equipo!"
                             st.session_state['ultimo_wa_factura'] = f"https://wa.me/57{str(tel_f).replace(' ', '')}?text={msg_wa}"
                             
                             st.success("¡Pago registrado en la nube con éxito!")
                             st.rerun()
                             
-                # --- ZONA DE DESCARGA Y ENVÍO ---
                 if 'ultimo_pdf_factura' in st.session_state and os.path.exists(st.session_state['ultimo_pdf_factura']):
                     st.markdown("<hr style='border-color: #27272A;'><h3 style='color:#10B981;'>🧾 Factura Oficial Generada</h3>", unsafe_allow_html=True)
                     col_f1, col_f2 = st.columns(2)
@@ -1384,13 +1319,13 @@ elif st.session_state.pagina_actual == 'Finanzas':
                         if 'ultimo_wa_factura' in st.session_state:
                             st.markdown(f"<a href='{st.session_state['ultimo_wa_factura']}' target='_blank'><button style='background:#10B981; color:white; border:none; padding:10px 20px; border-radius:6px; font-weight:bold; cursor:pointer; width:100%;'>🚀 ENVIAR RESUMEN POR WHATSAPP</button></a>", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
+
 # --- 11. USUARIOS ---
 elif st.session_state.pagina_actual == 'Usuarios':
     if st.session_state.rol_actual != "Administrador (Jefa)": st.error("⛔ DENEGADO")
     else:
         st.markdown("<h1>👥 Gestión de Accesos y Seguridad</h1>", unsafe_allow_html=True)
         
-        # 1. Mostrar lista de usuarios
         st.markdown("<div class='module-card'>", unsafe_allow_html=True)
         st.markdown("<h3 style='font-size: 18px; margin-bottom: 10px;'>📋 Usuarios Activos en el Sistema</h3>", unsafe_allow_html=True)
         df_mostrar = df_usr[["Usuario", "Alias", "Rol", "Creador"]].copy()
@@ -1399,7 +1334,6 @@ elif st.session_state.pagina_actual == 'Usuarios':
 
         col1, col2 = st.columns(2)
         
-        # 2. Panel Izquierdo: Crear Usuario
         with col1:
             st.markdown("<div class='module-card module-card-blue'>", unsafe_allow_html=True)
             st.markdown("<h3 style='font-size: 18px;'>➕ Crear Nuevo Usuario</h3>", unsafe_allow_html=True)
@@ -1423,7 +1357,6 @@ elif st.session_state.pagina_actual == 'Usuarios':
                         st.error("⚠ Usuario y Contraseña son obligatorios.")
             st.markdown("</div>", unsafe_allow_html=True)
 
-        # 3. Panel Derecho: Editar, Eliminar y EXPULSAR Usuario
         with col2:
             st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
             st.markdown("<h3 style='font-size: 18px;'>✏️ Modificar o Eliminar Cuenta</h3>", unsafe_allow_html=True)
@@ -1448,15 +1381,14 @@ elif st.session_state.pagina_actual == 'Usuarios':
                         btn_eliminar = st.form_submit_button("🗑️ ELIMINAR USUARIO")
                         
                     if btn_guardar:
-                        df_usr = df_usr.astype(str) # Blindaje de Pandas
+                        df_usr = df_usr.astype(str)
                         
                         df_usr.loc[df_usr["Usuario"] == str(usr_sel), "Alias"] = str(e_alias)
                         df_usr.loc[df_usr["Usuario"] == str(usr_sel), "Rol"] = str(e_rol)
                         
                         clave_cambiada = False
-                        if e_pass.strip():  # Si escribiste una clave nueva...
+                        if e_pass.strip(): 
                             df_usr.loc[df_usr["Usuario"] == str(usr_sel), "Password"] = str(e_pass)
-                            # 🔥 LA MAGIA: Invalidamos el Token de Sesión en la Base de Datos
                             df_usr.loc[df_usr["Usuario"] == str(usr_sel), "Session_Token"] = "REVOCADO_POR_SEGURIDAD"
                             clave_cambiada = True
                             
@@ -1465,7 +1397,6 @@ elif st.session_state.pagina_actual == 'Usuarios':
                         
                         if clave_cambiada:
                             st.success(f"✅ Contraseña cambiada. La sesión de '{usr_sel}' ha sido cerrada forzosamente.")
-                            # Si te cambiaste la clave a ti mismo, el sistema te saca a ti también de inmediato
                             if usr_sel == st.session_state.usuario_actual:
                                 st.session_state.autenticado = False
                                 st.session_state.kicked = True
@@ -1498,7 +1429,6 @@ elif st.session_state.pagina_actual == 'Sistema':
         st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
         st.success("☁️ Base de datos sincronizada y operando 100% sobre Google Sheets Master.")
         
-        # --- BOTONES DE DESCARGA DE RESGUARDOS ---
         st.markdown("<h3>📥 Descarga de Resguardos CSV Locales</h3>", unsafe_allow_html=True)
         col_d1, col_d2, col_d3 = st.columns(3)
         with col_d1:
@@ -1513,11 +1443,9 @@ elif st.session_state.pagina_actual == 'Sistema':
             
         st.markdown("<br><hr style='border-color: #CBD5E1;'>", unsafe_allow_html=True)
         
-        # --- TERMINAL DE AUDITORÍA QUIRÚRGICA POR PERFIL ---
         st.markdown("<h3>🔍 Terminal de Auditoría Detallada por Usuario</h3>", unsafe_allow_html=True)
         st.markdown("<p style='color: #64748B; font-size: 13px;'>Selecciona un colaborador activo para revisar el rastro exacto de todas sus operaciones.</p>", unsafe_allow_html=True)
         
-        # 🔥 SOLUCIÓN: Extraemos ÚNICAMENTE los usuarios que existen ACTUALMENTE en la base de datos
         usuarios_auditables = sorted(df_usr["Alias"].dropna().unique().tolist()) if not df_usr.empty else []
             
         if usuarios_auditables:
@@ -1526,14 +1454,11 @@ elif st.session_state.pagina_actual == 'Sistema':
             if usuario_seleccionado:
                 st.markdown(f"<br><h4 style='color: #2563EB;'>📜 Historial de Actividad: {usuario_seleccionado}</h4>", unsafe_allow_html=True)
                 
-                # Filtrar logs de este usuario específico
                 if not df_log.empty:
                     df_log_usuario = df_log[df_log["Usuario"].astype(str) == str(usuario_seleccionado)].copy()
                     
                     if not df_log_usuario.empty:
-                        # Mostrar el número total de acciones registradas
                         st.info(f"Se encontraron **{len(df_log_usuario)}** acciones registradas en el sistema para este perfil.")
-                        # Mostrar la tabla ordenada de más reciente a más antigua
                         st.dataframe(df_log_usuario.iloc[::-1][["Timestamp", "Modulo", "Accion"]], use_container_width=True, hide_index=True)
                     else:
                         st.info(f"✨ El colaborador '{usuario_seleccionado}' no registra eventos o acciones en el sistema todavía.")
@@ -1549,7 +1474,6 @@ elif st.session_state.pagina_actual == 'Papelera':
     st.markdown("<h1>🗑️ Papelera de Reciclaje</h1>", unsafe_allow_html=True)
     st.markdown("<div class='module-card'>", unsafe_allow_html=True)
     
-    # Buscamos los clientes que tienen el estado en "Borrado"
     df_borrados = df_cli[df_cli["Estado"] == "Borrado"].copy()
     
     if not df_borrados.empty:
@@ -1561,15 +1485,12 @@ elif st.session_state.pagina_actual == 'Papelera':
                 st.markdown(f"<h4 style='margin-bottom: 0;'>{r['Cedula']} - {r['Nombre']}</h4>", unsafe_allow_html=True)
                 st.markdown(f"<span style='color: #EF4444; font-size: 13px; font-weight: bold;'>Enviado a papelera el: {r.get('F_Borrado', 'Desconocido')}</span>", unsafe_allow_html=True)
             with col2:
-                # Botón de rescate
                 if st.button("♻️ Restaurar Cliente", key=f"res_{r['Cedula']}"):
                     with st.spinner("Restaurando expediente y carpeta en Drive..."):
-                        # 1. Volver a activarlo en Google Sheets
                         df_cli.loc[df_cli["Cedula"].astype(str) == str(r['Cedula']), "Estado"] = "Activo"
                         df_cli.loc[df_cli["Cedula"].astype(str) == str(r['Cedula']), "F_Borrado"] = ""
                         guardar_tabla(df_cli, "clientes")
                         
-                        # 2. Devolver la carpeta de Google Drive a la Bóveda
                         restaurar_de_papelera_drive(str(r['Cedula']), r['Nombre'])
                         
                         registrar_log("SISTEMA", f"Restauró expediente de la papelera: {r['Cedula']}")
