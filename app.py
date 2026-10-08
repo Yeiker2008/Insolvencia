@@ -26,6 +26,42 @@ try:
 except ImportError:
     GSPREAD_DISPONIBLE = False
 
+# --- PODERES PARA GOOGLE DRIVE (LA BÓVEDA MAESTRA) ---
+try:
+    from google.oauth2.service_account import Credentials
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
+    import io
+    GDRIVE_DISPONIBLE = True
+except ImportError:
+    st.error("⚠️ Abre la terminal y ejecuta: pip install google-api-python-client")
+    GDRIVE_DISPONIBLE = False
+
+# Definimos los permisos necesarios (Sheets y Drive)
+SCOPES = [
+    'https://spreadsheets.google.com/feeds',
+    'https://www.googleapis.com/auth/drive'
+]
+
+# ID de tu Bóveda Maestra en Drive (¡REEMPLAZA ESTO!)
+CARPETA_RAIZ_DRIVE_ID = "1MC6wHXaV557prpKV-KCRc8yeCdphD6U8"
+
+# Conexión Global a Google Drive
+@st.cache_resource
+def conectar_gdrive():
+    if not GDRIVE_DISPONIBLE: return None
+    try:
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+            drive_service = build('drive', 'v3', credentials=creds)
+            return drive_service
+    except Exception as e:
+        st.error(f"🚨 ERROR CONECTANDO A GOOGLE DRIVE: {e}")
+    return None
+
+gc_drive = conectar_gdrive()
+
 # ==========================================
 # 1. CORE & CONFIGURACIÓN DE SESIÓN Y GSHEETS
 # ==========================================
@@ -241,11 +277,44 @@ def registrar_log(modulo, accion):
         guardar_tabla(df_log, "logs")
     except: pass
 
-def estructurar_carpetas(cedula, nombre):
-    base = os.path.join(CARP_EXP, f"{cedula} - {nombre}")
-    for c in ["01_Docs_Viabilidad", "02_Contratos_Firmas", "03_Soporte_Radicacion", "04_Log_Judicial", "05_Pruebas_Anexos"]:
-        os.makedirs(os.path.join(base, c), exist_ok=True)
-    return base
+def estructurar_carpetas(cc, nom):
+    # Si por alguna razón no hay conexión a Drive, cancela para no causar errores
+    if not gc_drive: return False
+    
+    nombre_carpeta_cliente = f"{cc} - {nom}"
+    
+    try:
+        # 1. Verificar si el cliente ya tiene carpeta en Drive para no duplicarla
+        query = f"name='{nombre_carpeta_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        resultados = gc_drive.files().list(q=query, fields="files(id, name)").execute()
+        archivos = resultados.get('files', [])
+        
+        if not archivos:
+            # 2. Si no existe, crear la carpeta principal del cliente en la Bóveda Maestra
+            metadata_cliente = {
+                'name': nombre_carpeta_cliente,
+                'parents': [CARPETA_RAIZ_DRIVE_ID],
+                'mimeType': 'application/vnd.google-apps.folder'
+            }
+            carpeta_cliente = gc_drive.files().create(body=metadata_cliente, fields='id').execute()
+            cliente_id = carpeta_cliente.get('id')
+            
+            # 3. Crear las subcarpetas internas obligatorias
+            subcarpetas = ["Financiero", "Juzgado", "Notaria", "Acreedores"]
+            for sub in subcarpetas:
+                metadata_sub = {
+                    'name': sub,
+                    'parents': [cliente_id],
+                    'mimeType': 'application/vnd.google-apps.folder'
+                }
+                gc_drive.files().create(body=metadata_sub, fields='id').execute()
+            return True
+            
+        return False
+        
+    except Exception as e:
+        print(f"Error creando carpetas en Drive: {e}")
+        return False
 
 def limpiar_num(val):
     try: return float(str(val).replace("$","").replace(".","").replace(",","").strip())
