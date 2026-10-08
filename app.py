@@ -96,6 +96,33 @@ def mover_a_papelera_drive(cc, nom):
         print(f"Error moviendo la carpeta a la Papelera de Drive: {e}")
         return False
 
+def restaurar_de_papelera_drive(cc, nom):
+    if not gc_drive: return False
+    nombre_carpeta_cliente = f"{cc} - {nom}"
+    try:
+        # Buscar la carpeta en la Papelera
+        query = f"name='{nombre_carpeta_cliente}' and '{CARPETA_PAPELERA_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        resultados = gc_drive.files().list(q=query, fields="files(id, parents)").execute()
+        archivos = resultados.get('files', [])
+        
+        if archivos:
+            carpeta_id = archivos[0]['id']
+            padres_viejos = ",".join(archivos[0].get('parents', []))
+            
+            # Mover de vuelta a la Bóveda Maestra
+            gc_drive.files().update(
+                fileId=carpeta_id,
+                addParents=CARPETA_RAIZ_DRIVE_ID,
+                removeParents=padres_viejos,
+                fields='id, parents'
+            ).execute()
+            return True
+        return False
+    except Exception as e:
+        print(f"Error restaurando carpeta en Drive: {e}")
+        return False
+        
+
 # ==========================================
 # 1. CORE & CONFIGURACIÓN DE SESIÓN Y GSHEETS
 # ==========================================
@@ -1318,3 +1345,41 @@ elif st.session_state.pagina_actual == 'Sistema':
             st.warning("No hay usuarios activos registrados para auditar.")
             
         st.markdown("</div>", unsafe_allow_html=True)
+
+# --- 13. PAPELERA DE RECICLAJE ---
+elif st.session_state.pagina_actual == 'Papelera':
+    st.markdown("<h1>🗑️ Papelera de Reciclaje</h1>", unsafe_allow_html=True)
+    st.markdown("<div class='module-card'>", unsafe_allow_html=True)
+    
+    # Buscamos los clientes que tienen el estado en "Borrado"
+    df_borrados = df_cli[df_cli["Estado"] == "Borrado"].copy()
+    
+    if not df_borrados.empty:
+        st.info("⚠️ Los expedientes aquí estarán por 30 días antes de su eliminación permanente. Puedes restaurarlos si fue un error.")
+        
+        for _, r in df_borrados.iterrows():
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.markdown(f"<h4 style='margin-bottom: 0;'>{r['Cedula']} - {r['Nombre']}</h4>", unsafe_allow_html=True)
+                st.markdown(f"<span style='color: #EF4444; font-size: 13px; font-weight: bold;'>Enviado a papelera el: {r.get('F_Borrado', 'Desconocido')}</span>", unsafe_allow_html=True)
+            with col2:
+                # Botón de rescate
+                if st.button("♻️ Restaurar Cliente", key=f"res_{r['Cedula']}"):
+                    with st.spinner("Restaurando expediente y carpeta en Drive..."):
+                        # 1. Volver a activarlo en Google Sheets
+                        df_cli.loc[df_cli["Cedula"].astype(str) == str(r['Cedula']), "Estado"] = "Activo"
+                        df_cli.loc[df_cli["Cedula"].astype(str) == str(r['Cedula']), "F_Borrado"] = ""
+                        guardar_tabla(df_cli, "clientes")
+                        
+                        # 2. Devolver la carpeta de Google Drive a la Bóveda
+                        restaurar_de_papelera_drive(str(r['Cedula']), r['Nombre'])
+                        
+                        registrar_log("SISTEMA", f"Restauró expediente de la papelera: {r['Cedula']}")
+                        st.success("¡Expediente restaurado con éxito!")
+                        time.sleep(1.5)
+                        st.rerun()
+            st.markdown("<hr style='border-color: #E2E8F0; margin: 10px 0;'>", unsafe_allow_html=True)
+    else:
+        st.success("✨ La papelera está vacía. No hay expedientes eliminados.")
+        
+    st.markdown("</div>", unsafe_allow_html=True)
