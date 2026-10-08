@@ -49,20 +49,23 @@ CARPETA_RAIZ_DRIVE_ID = "1MC6wHXaV557prpKV-KCRc8yeCdphD6U8"
 # ID de la Papelera en Drive (¡NUEVO!)
 CARPETA_PAPELERA_DRIVE_ID = "1MGBXOKbPuAE6xsf53AcCjwMFE_yzDbir"
 
-# Conexión Global a Google Drive
+# Conexión Global a Google Drive usando tus credenciales OAuth personales
 @st.cache_resource
 def conectar_gdrive():
     if not GDRIVE_DISPONIBLE: return None
     try:
-        if "gcp_service_account" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-            drive_service = build('drive', 'v3', credentials=creds)
-            return drive_service
+        creds = Credentials(
+            None,
+            refresh_token=st.secrets["google_refresh_token"],
+            client_id=st.secrets["google_client_id"],
+            client_secret=st.secrets["google_client_secret"],
+            token_uri="https://oauth2.googleapis.com/token"
+        )
+        drive_service = build('drive', 'v3', credentials=creds)
+        return drive_service
     except Exception as e:
-        st.error(f"🚨 ERROR CONECTANDO A GOOGLE DRIVE: {e}")
-    return None
-
+        st.error(f"❌ ERROR CONECTANDO A GOOGLE DRIVE: {e}")
+        return None
 gc_drive = conectar_gdrive()
 
 def mover_a_papelera_drive(cc, nom):
