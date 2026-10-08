@@ -834,7 +834,6 @@ elif st.session_state.pagina_actual == 'Contratos':
         data_c = df_activos[df_activos["Cedula"].astype(str) == cc_s].iloc[0]
         senal, tel_c = int(data_c["Senal"]), str(data_c.get("Telefono", ""))
         rb = estructurar_carpetas(cc_s, nom_s)
-        r1, r2, r3 = [os.path.join(rb, c) for c in ["01_Docs_Viabilidad", "02_Contratos_Firmas", "03_Soporte_Radicacion"]]
         
         mostrar_boveda(cc_s, nom_s)
 
