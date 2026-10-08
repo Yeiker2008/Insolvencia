@@ -54,12 +54,14 @@ CARPETA_PAPELERA_DRIVE_ID = "1MGBXOKbPuAE6xsf53AcCjwMFE_yzDbir"
 def conectar_gdrive():
     if not GDRIVE_DISPONIBLE: return None
     try:
-        creds = Credentials.from_authorized_user_info({
-            "refresh_token": st.secrets["google_refresh_token"],
-            "client_id": st.secrets["google_client_id"],
-            "client_secret": st.secrets["google_client_secret"],
-            "token_uri": "https://oauth2.googleapis.com/token"
-        })
+        creds = Credentials(
+            token=None,
+            refresh_token=st.secrets["google_refresh_token"],
+            client_id=st.secrets["google_client_id"],
+            client_secret=st.secrets["google_client_secret"],
+            token_uri="https://oauth2.googleapis.com/token",
+            scopes=SCOPES
+        )
         drive_service = build('drive', 'v3', credentials=creds)
         return drive_service
     except Exception as e:
