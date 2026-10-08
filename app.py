@@ -55,7 +55,7 @@ def conectar_gdrive():
     if not GDRIVE_DISPONIBLE: return None
     try:
         creds = Credentials(
-            token=None,
+            None,
             refresh_token=st.secrets["google_refresh_token"],
             client_id=st.secrets["google_client_id"],
             client_secret=st.secrets["google_client_secret"],
