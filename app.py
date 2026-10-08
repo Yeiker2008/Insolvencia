@@ -930,21 +930,28 @@ elif st.session_state.pagina_actual == 'Contratos':
 
         def subir_a_drive_mem(file_obj, filename, folder_id):
             if not gc_drive or not folder_id: return
-            from googleapiclient.http import MediaFileUpload
-            tp = f"temp_{filename}"
-            with open(tp, "wb") as f: f.write(file_obj.getbuffer())
-            meta = {'name': filename, 'parents': [folder_id]}
-            media = MediaFileUpload(tp, resumable=True)
-            gc_drive.files().create(body=meta, media_body=media, fields='id').execute()
-            if os.path.exists(tp): os.remove(tp)
+            try:
+                from googleapiclient.http import MediaIoBaseUpload
+                # Leemos los bytes directamente de la memoria de Streamlit sin tocar el disco
+                bytes_data = file_obj.getvalue()
+                fh = io.BytesIO(bytes_data)
+                
+                meta = {'name': filename, 'parents': [folder_id]}
+                media = MediaIoBaseUpload(fh, mimetype='application/octet-stream', resumable=True)
+                
+                gc_drive.files().create(body=meta, media_body=media, fields='id').execute()
+            except Exception as e:
+                print(f"Error en subir_a_drive_mem: {e}")
 
         def subir_doc_local_a_drive(ruta_local, filename, folder_id):
             if not gc_drive or not folder_id: return
-            from googleapiclient.http import MediaFileUpload
-            meta = {'name': filename, 'parents': [folder_id]}
-            media = MediaFileUpload(ruta_local, resumable=True)
-            gc_drive.files().create(body=meta, media_body=media, fields='id').execute()
-        # ----------------------------------------------
+            try:
+                from googleapiclient.http import MediaFileUpload
+                meta = {'name': filename, 'parents': [folder_id]}
+                media = MediaFileUpload(ruta_local, resumable=True)
+                gc_drive.files().create(body=meta, media_body=media, fields='id').execute()
+            except Exception as e:
+                print(f"Error en subir_doc_local_a_drive: {e}")
 
         if senal == 0:
             arch_drive, sub_id = obtener_archivos_y_id(cc_s, nom_s, "Financiero")
