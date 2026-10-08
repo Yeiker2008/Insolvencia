@@ -984,7 +984,49 @@ elif st.session_state.pagina_actual == 'Contratos':
                 print(f"Error en subir_doc_local_a_drive: {e}")
 
         if senal == 0:
-            arch_drive, sub_id = obtener_archivos_y_id(cc_s, nom_s, "Financiero")
+            # 1. Asegurar carpeta del cliente y subcarpeta Financiero en Drive
+            nombre_cliente = f"{cc_s} - {nom_s}"
+            sub_id = None
+            arch_drive = []
+            
+            if gc_drive:
+                try:
+                    # Buscar carpeta principal del cliente
+                    q1 = f"name='{nombre_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and trashed=false"
+                    r1 = gc_drive.files().list(q=q1, orderBy="createdTime desc", fields="files(id)").execute()
+                    carpetas = r1.get('files', [])
+                    
+                    if not carpetas:
+                        meta_cli = {'name': nombre_cliente, 'parents': [CARPETA_RAIZ_DRIVE_ID], 'mimeType': 'application/vnd.google-apps.folder'}
+                        cli_creada = gc_drive.files().create(body=meta_cli, fields='id').execute()
+                        cli_id = cli_creada.get('id')
+                        
+                        # Crear las 4 subcarpetas obligatorias
+                        for sub_nombre in ["Financiero", "Juzgado", "Notaria", "Acreedores"]:
+                            meta_sub = {'name': sub_nombre, 'parents': [cli_id], 'mimeType': 'application/vnd.google-apps.folder'}
+                            gc_drive.files().create(body=meta_sub, fields='id').execute()
+                    else:
+                        cli_id = carpetas[0]['id']
+                    
+                    # Buscar subcarpeta Financiero
+                    q2 = f"name='Financiero' and '{cli_id}' in parents and trashed=false"
+                    r2 = gc_drive.files().list(q=q2, fields="files(id)").execute()
+                    subs = r2.get('files', [])
+                    
+                    if not subs:
+                        meta_sub = {'name': 'Financiero', 'parents': [cli_id], 'mimeType': 'application/vnd.google-apps.folder'}
+                        sub_creada = gc_drive.files().create(body=meta_sub, fields='id').execute()
+                        sub_id = sub_creada.get('id')
+                    else:
+                        sub_id = subs[0]['id']
+                    
+                    # Listar archivos actuales en Financiero
+                    q3 = f"'{sub_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
+                    r3 = gc_drive.files().list(q=q3, fields="files(name)").execute()
+                    arch_drive = [a['name'] for a in r3.get('files', [])]
+                except Exception as e:
+                    print(f"Error sincronizando carpetas: {e}")
+
             st.markdown(f"<h3 style='font-size:18px;'>Fase 1: Recolección Documental ({len(arch_drive)}/8)</h3>", unsafe_allow_html=True)
             docs = ["1. CÉDULA", "2. CERTIFICADO REDAM", "3. DATACRÉDITO", "4. CERTIFICADO SIMIT", "5. CERTIFICADO RAMA", "6. CERTIFICADO RUNT", "7. TRADICIÓN Y LIBERTAD", "8. CERTIFICADO RUES"]
             
@@ -997,62 +1039,37 @@ elif st.session_state.pagina_actual == 'Contratos':
                     col.success(f"✔️ {d}")
                 else:
                     upl = col.file_uploader(f"📥 Subir: {d}", key=f"auto_up_{cc_s}_{i}")
-                    
-                    # Identificador único en la memoria para este archivo específico
                     file_key = f"subido_{cc_s}_{i}"
                     
                     if upl is not None and st.session_state.get(file_key) != upl.name:
-                        if sub_id:
-                            with st.spinner(f"Subiendo {d} a Drive..."):
-                                nombre_archivo = f"{nombre_corto}_{upl.name}"
-                                subir_a_drive_mem(upl, nombre_archivo, sub_id)
-                                
-                                # Guardamos en la memoria de sesión que este archivo ya se subió
-                                st.session_state[file_key] = upl.name
-                                
-                                # Verificamos si ya se completaron los 8 documentos
-                                arch_actualizados, _ = obtener_archivos_y_id(cc_s, nom_s, "Financiero")
-                                if len(arch_actualizados) >= 8:
-                                    df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 1
-                                    guardar_tabla(df_cli, "clientes")
+                        if sub_id and gc_drive:
+                            with st.spinner(f"Subiendo {d} a Google Drive..."):
+                                try:
+                                    # Método blindado con archivo temporal físico
+                                    nombre_archivo = f"{nombre_corto}_{upl.name}"
+                                    temp_path = f"temp_{nombre_archivo}"
+                                    with open(temp_path, "wb") as f:
+                                        f.write(upl.getbuffer())
+                                    
+                                    meta = {'name': nombre_archivo, 'parents': [sub_id]}
+                                    media = MediaFileUpload(temp_path, resumable=False)
+                                    gc_drive.files().create(body=meta, media_body=media, fields='id').execute()
+                                    
+                                    if os.path.exists(temp_path): os.remove(temp_path)
+                                    
+                                    st.session_state[file_key] = upl.name
+                                    
+                                    # Verificar si ya completó los 8
+                                    q_check = f"'{sub_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
+                                    r_check = gc_drive.files().list(q=q_check, fields="files(name)").execute()
+                                    arch_actualizados = [a['name'] for a in r_check.get('files', [])]
+                                    
+                                    if len(arch_actualizados) >= 8:
+                                        df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 1
+                                        guardar_tabla(df_cli, "clientes")
+                                except Exception as e:
+                                    st.error(f"Error al subir archivo: {e}")
                             st.rerun()
-                        
-        elif senal == 1:
-            st.markdown("<h3 style='font-size:18px;'>Fase 2: Motor de Contratos</h3>", unsafe_allow_html=True)
-            with st.form("motor"):
-                ca, cb = st.columns(2)
-                with ca: abo = st.selectbox("Abogado Titular de la Firma", ABOGADOS)
-                with cb: h_n = st.text_input("Honorarios Totales (\$)"); h_l = st.text_input("Honorarios (En Letras)")
-                cc_col, cd, ce = st.columns(3)
-                with cc_col: cuo_n = st.text_input("Valor Cuota (\$)"); cuo_l = st.text_input("Valor Cuota (Letras)")
-                with cd: ciu_e = st.text_input("Ciudad Expedición C.C."); ciu_r = st.text_input("Ciudad Residencia Actual")
-                with ce: dir_r = st.text_input("Dirección de Residencia")
-                
-                if st.form_submit_button("GENERAR DOCUMENTOS Y SUBIR A NUBE"):
-                    meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-                    dic_r = { "«NOMBRES»": nom_s, "«CEDULA»": cc_s, "«EXP_CC»": ciu_e, "«DIRECCION»": dir_r, "«CIUDAD_DIRECCION»": ciu_r, "«CORREO»": data_c.get("Email",""), "«TELEFONO»": tel_c, "«TOTAL_PAGO»": h_n, "«TOTAL_PAGO_LETRA»": h_l, "«VALOR_CUOTA»": cuo_n, "«VALOR_CUOTA_LETRA»": cuo_l, "«DIA»": str(hoy.day), "«MES»": meses[hoy.month - 1] }
-                    rutas = { "CONTRATO": os.path.join(CARP_PLA, abo, "CONTRATO.docx"), "PODER_JUZGADO": os.path.join(CARP_PLA, abo, "PODER_JUZGADO.docx") }
-                    
-                    _, sub_id_notaria = obtener_archivos_y_id(cc_s, nom_s, "Notaria")
-                    
-                    err = False
-                    with st.spinner("Generando y subiendo contratos a Google Drive..."):
-                        for n, r_p in rutas.items():
-                            if os.path.exists(r_p): 
-                                temp_salida = f"temp_{n}_{nom_s}.docx"
-                                motor_docx(r_p, temp_salida, dic_r)
-                                if sub_id_notaria:
-                                    subir_doc_local_a_drive(temp_salida, f"{n}_{nom_s}.docx", sub_id_notaria)
-                                if os.path.exists(temp_salida): os.remove(temp_salida)
-                            else: 
-                                err = True; st.error(f"Falta plantilla {n} en carpeta {abo}.")
-                        
-                        if not err:
-                            if str(cc_s) not in df_fin["Cedula"].astype(str).values:
-                                nuevo_f = pd.concat([df_fin, pd.DataFrame([{"Cedula": str(cc_s), "Honorarios": str(h_n), "Abonado": "0"}])], ignore_index=True)
-                                guardar_tabla(nuevo_f, "finanzas")
-                            df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 2
-                            guardar_tabla(df_cli, "clientes"); st.rerun()
 
         elif senal == 2:
             st.markdown("<h3 style='font-size:18px;'>Fase 3: Recolección de Firmas</h3>", unsafe_allow_html=True)
