@@ -529,7 +529,7 @@ elif st.session_state.pagina_actual == 'Nuevo':
         st.markdown("</div>", unsafe_allow_html=True)
         
    # ---------------------------------------------
-    # PESTAÑA 2: MODIFICAR CLIENTE (CORREGIDO SIN CREAR NUEVOS)
+    # PESTAÑA 2: MODIFICAR CLIENTE (BLINDADO CONTRA TYPEERROR)
     # ---------------------------------------------
     with tab_editar:
         st.markdown("<div class='module-card module-card-blue'>", unsafe_allow_html=True)
@@ -547,7 +547,6 @@ elif st.session_state.pagina_actual == 'Nuevo':
                 
                 st.warning("⚠️ Los cambios realizados aquí sobrescribirán al cliente seleccionado. No se creará un cliente nuevo.")
                 
-                # Usamos keys dinámicas atadas a la cédula original para forzar a Streamlit a actualizar los inputs al cambiar de cliente
                 mc_a, mc_b = st.columns(2)
                 with mc_a: m_cc = st.text_input("Cédula de Ciudadanía", value=str(datos_c["Cedula"]), key=f"inp_cc_{cc_original}")
                 with mc_b: m_nom = st.text_input("Nombre Completo", value=str(datos_c["Nombre"]), key=f"inp_nom_{cc_original}")
@@ -565,12 +564,11 @@ elif st.session_state.pagina_actual == 'Nuevo':
                 st.markdown("<br>", unsafe_allow_html=True)
                 
                 if st.button("💾 SOBRESCRIBIR Y GUARDAR CAMBIOS", key=f"btn_save_{cc_original}"):
-                    # Validar si cambió la cédula y si la nueva cédula ya pertenece a otro cliente distinto
                     if str(m_cc) != str(cc_original) and str(m_cc) in df_frescos["Cedula"].astype(str).values:
                         st.error(f"❌ La cédula {m_cc} ya pertenece a otro expediente en el sistema.")
                     else:
                         with st.spinner("Modificando cliente en Google Sheets..."):
-                            # 1. Renombrar la carpeta física si cambió el nombre o la cédula
+                            # 1. Renombrar carpeta física
                             old_path = os.path.join(CARP_EXP, f"{cc_original} - {str(datos_c['Nombre'])}")
                             new_path = os.path.join(CARP_EXP, f"{m_cc} - {m_nom}")
                             if old_path != new_path:
@@ -580,21 +578,23 @@ elif st.session_state.pagina_actual == 'Nuevo':
                                 except Exception: pass
                                 estructurar_carpetas(str(m_cc), m_nom)
                             
-                            # 2. Modificar la fila EXACTA en la tabla Clientes (Sin concat para no crear un nuevo registro)
-                            idx_filas = df_frescos.index[df_frescos["Cedula"].astype(str) == str(cc_original)].tolist()
+                            # 2. CONVERSIÓN OBLIGATORIA A TEXTO DE TODA LA TABLA (SOLUCIÓN A TYPEERROR)
+                            df_frescos = df_frescos.astype(str)
+                            
+                            idx_filas = df_frescos.index[df_frescos["Cedula"] == str(cc_original)].tolist()
                             if idx_filas:
                                 idx_exacto = idx_filas[0]
-                                df_frescos.loc[idx_exacto, "Cedula"] = str(m_cc)
-                                df_frescos.loc[idx_exacto, "Nombre"] = str(m_nom)
-                                df_frescos.loc[idx_exacto, "Fuerza"] = str(m_fza)
-                                df_frescos.loc[idx_exacto, "Telefono"] = str(m_tel)
-                                df_frescos.loc[idx_exacto, "Email"] = str(m_mail)
-                                df_frescos.loc[idx_exacto, "Deuda_Est"] = str(m_deuda)
-                                df_frescos.loc[idx_exacto, "F_Actualizacion"] = hoy.strftime("%Y-%m-%d")
+                                df_frescos.at[idx_exacto, "Cedula"] = str(m_cc)
+                                df_frescos.at[idx_exacto, "Nombre"] = str(m_nom)
+                                df_frescos.at[idx_exacto, "Fuerza"] = str(m_fza)
+                                df_frescos.at[idx_exacto, "Telefono"] = str(m_tel)
+                                df_frescos.at[idx_exacto, "Email"] = str(m_mail)
+                                df_frescos.at[idx_exacto, "Deuda_Est"] = str(m_deuda)
+                                df_frescos.at[idx_exacto, "F_Actualizacion"] = hoy.strftime("%Y-%m-%d")
                                 
                                 guardar_tabla(df_frescos, "clientes")
                             
-                            # 3. Efecto Cascada en las demás tablas (Sobrescribir la cédula vieja con la nueva)
+                            # 3. Efecto Cascada en las demás tablas
                             for t_nom, t_cols in [("finanzas", ["Cedula", "Honorarios", "Abonado"]), 
                                                    ("actuaciones", ["ID_Act", "Cedula", "Fecha", "Tipo", "Juzgado", "Radicado", "Anotacion"]),
                                                    ("vencimientos", ["ID_Ven", "Cedula", "Cliente", "Asunto", "Fecha_Limite", "Estado"]),
@@ -602,7 +602,8 @@ elif st.session_state.pagina_actual == 'Nuevo':
                                                    ("audiencias", ["ID_Aud", "Cedula", "Cliente", "Fecha_Hora", "Motivo"])]:
                                 df_t = leer_tabla(t_nom, t_cols)
                                 if not df_t.empty and str(cc_original) in df_t["Cedula"].astype(str).values:
-                                    mask_t = df_t["Cedula"].astype(str) == str(cc_original)
+                                    df_t = df_t.astype(str)
+                                    mask_t = df_t["Cedula"] == str(cc_original)
                                     df_t.loc[mask_t, "Cedula"] = str(m_cc)
                                     if "Cliente" in df_t.columns:
                                         df_t.loc[mask_t, "Cliente"] = str(m_nom)
