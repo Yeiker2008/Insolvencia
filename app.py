@@ -911,22 +911,33 @@ elif st.session_state.pagina_actual == 'Contratos':
         
         # --- MOTOR DE GOOGLE DRIVE PARA CONTRATOS ---
         def obtener_archivos_y_id(cc, nom, subcarpeta):
-            if not gc_drive: return [], None
+            if not gc_drive: 
+                st.error("🚨 Error: No hay conexión global a Google Drive.")
+                return [], None
             try:
+                # 1. Buscar carpeta del cliente
                 q1 = f"name='{cc} - {nom}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and trashed=false"
                 r1 = gc_drive.files().list(q=q1, fields="files(id)").execute()
-                if not r1.get('files'): return [], None
+                if not r1.get('files'): 
+                    st.warning(f"⚠️ No se encontró la carpeta principal para: {cc} - {nom} en la Bóveda de Drive.")
+                    return [], None
                 cli_id = r1['files'][0]['id']
                 
+                # 2. Buscar subcarpeta (ej: Financiero)
                 q2 = f"name='{subcarpeta}' and '{cli_id}' in parents and trashed=false"
                 r2 = gc_drive.files().list(q=q2, fields="files(id)").execute()
-                if not r2.get('files'): return [], None
+                if not r2.get('files'): 
+                    st.warning(f"⚠️ No se encontró la subcarpeta '{subcarpeta}' dentro de la carpeta del cliente.")
+                    return [], None
                 sub_id = r2['files'][0]['id']
                 
+                # 3. Listar archivos existentes
                 q3 = f"'{sub_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
                 r3 = gc_drive.files().list(q=q3, fields="files(name)").execute()
                 return [a['name'] for a in r3.get('files', [])], sub_id
-            except: return [], None
+            except Exception as e:
+                st.error(f"🚨 Error crítico buscando en Drive: {e}")
+                return [], None
 
         def subir_a_drive_mem(file_obj, filename, folder_id):
             if not gc_drive or not folder_id: return
