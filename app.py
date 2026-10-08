@@ -571,7 +571,8 @@ if st.session_state.pagina_actual == 'Dashboard':
                 except: pass
         if not hay_alertas: st.success("✨ Expedientes fluyendo con normalidad.")
         st.markdown("</div>", unsafe_allow_html=True)
-        # --- ZONA DE PELIGRO: MOVER A PAPELERA ---
+        
+    # --- ZONA DE PELIGRO: MOVER A PAPELERA ---
     st.markdown("<hr style='border-color: #27272A;'><h3 style='color:#EF4444;'>⚠️ Zona de Peligro: Gestión de Archivo</h3>", unsafe_allow_html=True)
     st.markdown("<div class='module-card'>", unsafe_allow_html=True)
     if not df_activos.empty:
@@ -579,17 +580,24 @@ if st.session_state.pagina_actual == 'Dashboard':
             cliente_a_borrar = st.selectbox("Seleccionar expediente para mover a la Papelera:", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"])
             if st.form_submit_button("MOVER A LA PAPELERA"):
                 cc_b = cliente_a_borrar.split(" - ")[0]
-                # Cambiar estado a "Borrado"
+                nom_b = cliente_a_borrar.split(" - ")[1] # Extraemos el nombre para Google Drive
+                
+                # 1. Cambiar estado a "Borrado" en Google Sheets
                 df_cli.loc[df_cli["Cedula"].astype(str) == cc_b, "Estado"] = "Borrado"
                 df_cli.loc[df_cli["Cedula"].astype(str) == cc_b, "F_Borrado"] = hoy.strftime("%Y-%m-%d")
                 guardar_tabla(df_cli, "clientes")
-                registrar_log("SISTEMA", f"Expediente enviado a papelera: {cc_b}")
-                st.success("¡Expediente movido a la papelera correctamente!")
+                
+                # 2. 🔥 LA MAGIA DE GOOGLE DRIVE 🔥: Mover carpeta a la Papelera de Drive
+                mover_a_papelera_drive(str(cc_b), nom_b)
+                
+                registrar_log("SISTEMA", f"Expediente y carpeta enviados a papelera: {cc_b}")
+                st.success("¡Expediente movido a la papelera correctamente en Sheets y Drive!")
+                time.sleep(1.5) # Pausa corta para que se vea el mensaje
                 st.rerun()
     else:
         st.info("No hay clientes activos para archivar.")
     st.markdown("</div>", unsafe_allow_html=True)
-
+    
 # --- 2. APERTURA Y EDICIÓN ---
 elif st.session_state.pagina_actual == 'Nuevo':
     st.markdown("<h1>Gestión de Expedientes</h1>", unsafe_allow_html=True)
