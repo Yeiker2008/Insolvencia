@@ -489,7 +489,6 @@ if st.session_state.pagina_actual == 'Dashboard':
 elif st.session_state.pagina_actual == 'Nuevo':
     st.markdown("<h1>Gestión de Expedientes</h1>", unsafe_allow_html=True)
     
-    # Creamos las dos pestañas de navegación
     tab_nuevo, tab_editar = st.tabs(["➕ Apertura de Nuevo Caso", "✏️ Modificar Expediente Existente"])
     
     # ---------------------------------------------
@@ -499,19 +498,19 @@ elif st.session_state.pagina_actual == 'Nuevo':
         st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
         with st.form("nuevo_exp"):
             c1, c2, c3 = st.columns(3)
-            with c1: cc = st.text_input("Cédula de Ciudadanía")
+            with c1: cc = text_input("Cédula de Ciudadanía")
             with c2: nom = st.text_input("Nombre Completo")
             with c3: fza = st.selectbox("Facción", ["Policía Nacional", "Ejército Nacional", "Armada Nacional", "Fuerza Aérea", "Retirado / Pensionado", "Civil"])
             c4, c5, c6 = st.columns(3)
             with c4: tel = st.text_input("WhatsApp / Celular")
             with c5: mail = st.text_input("Correo Electrónico")
-            with c6: deuda = st.text_input("Deuda Aprox ($)")
+            with c6: deuda = st.text_input("Deuda Aprox (\$)")
             
             st.markdown("<hr style='border-color: #E2E8F0;'>", unsafe_allow_html=True)
             st.markdown("<p style='color:#2563EB; font-weight:bold;'>💰 Configuración Financiera del Caso</p>", unsafe_allow_html=True)
             cf1, cf2 = st.columns(2)
-            with cf1: honorarios_totales = st.text_input("Valor Total de Honorarios del Caso ($)", value="0")
-            with cf2: abono_inicial = st.text_input("Abono Inicial Recibido ($)", value="0")
+            with cf1: honorarios_totales = st.text_input("Valor Total de Honorarios del Caso (\$)", value="0")
+            with cf2: abono_inicial = st.text_input("Abono Inicial Recibido (\$)", value="0")
             
             if st.form_submit_button("CREAR BÓVEDA Y REGISTRAR EN NUBE"):
                 if not cc or not nom: st.error("Cédula y Nombre son obligatorios.")
@@ -529,7 +528,7 @@ elif st.session_state.pagina_actual == 'Nuevo':
         st.markdown("</div>", unsafe_allow_html=True)
         
     # ---------------------------------------------
-    # PESTAÑA 2: MODIFICAR CLIENTE
+    # PESTAÑA 2: MODIFICAR CLIENTE (ACTUALIZADA)
     # ---------------------------------------------
     with tab_editar:
         st.markdown("<div class='module-card module-card-blue'>", unsafe_allow_html=True)
@@ -540,9 +539,11 @@ elif st.session_state.pagina_actual == 'Nuevo':
                 datos_c = df_activos[df_activos["Cedula"].astype(str) == cc_m].iloc[0]
                 
                 with st.form("form_modificar"):
-                    st.info("💡 Nota: La Cédula no se puede cambiar por ser el identificador único. Si la cédula quedó mal, bórralo en la Papelera y créalo de nuevo.")
+                    st.warning("⚠️ Editar la Cédula o Nombre actualizará automáticamente los contratos, finanzas y carpetas asociadas a este cliente (Actualización en Cascada).")
                     
-                    m_nom = st.text_input("Nombre Completo (Corregir si es necesario)", value=str(datos_c["Nombre"]))
+                    mc_a, mc_b = st.columns(2)
+                    with mc_a: m_cc = st.text_input("Cédula de Ciudadanía", value=str(cc_m))
+                    with mc_b: m_nom = st.text_input("Nombre Completo", value=str(datos_c["Nombre"]))
                     
                     opciones_fza = ["Policía Nacional", "Ejército Nacional", "Armada Nacional", "Fuerza Aérea", "Retirado / Pensionado", "Civil"]
                     fza_actual = str(datos_c.get("Fuerza", "Civil"))
@@ -552,39 +553,17 @@ elif st.session_state.pagina_actual == 'Nuevo':
                     mc1, mc2, mc3 = st.columns(3)
                     with mc1: m_tel = st.text_input("WhatsApp / Celular", value=str(datos_c.get("Telefono", "")))
                     with mc2: m_mail = st.text_input("Correo Electrónico", value=str(datos_c.get("Email", "")))
-                    with mc3: m_deuda = st.text_input("Deuda Aprox ($)", value=str(datos_c.get("Deuda_Est", "")))
+                    with mc3: m_deuda = st.text_input("Deuda Aprox (\$)", value=str(datos_c.get("Deuda_Est", "")))
                     
                     if st.form_submit_button("💾 GUARDAR CAMBIOS DEL CLIENTE"):
-                        # 1. Renombrar la carpeta en el servidor si cambió el nombre
-                        old_path = estructurar_carpetas(cc_m, str(datos_c["Nombre"]))
-                        new_path = os.path.join(CARP_EXP, f"{cc_m} - {m_nom}")
-                        if old_path != new_path and os.path.exists(old_path):
-                            os.rename(old_path, new_path)
-                            
-                        # 2. Actualizar en la base de datos maestra (Clientes)
-                        df_cli.loc[df_cli["Cedula"].astype(str) == cc_m, "Nombre"] = m_nom
-                        df_cli.loc[df_cli["Cedula"].astype(str) == cc_m, "Fuerza"] = m_fza
-                        df_cli.loc[df_cli["Cedula"].astype(str) == cc_m, "Telefono"] = m_tel
-                        df_cli.loc[df_cli["Cedula"].astype(str) == cc_m, "Email"] = m_mail
-                        df_cli.loc[df_cli["Cedula"].astype(str) == cc_m, "Deuda_Est"] = m_deuda
-                        df_cli.loc[df_cli["Cedula"].astype(str) == cc_m, "F_Actualizacion"] = hoy.strftime("%Y-%m-%d")
-                        guardar_tabla(df_cli, "clientes")
-                        
-                        # 3. Actualizar el nombre en las tablas de Agenda y Vencimientos
-                        if not df_ven.empty and cc_m in df_ven["Cedula"].astype(str).values:
-                            df_ven.loc[df_ven["Cedula"].astype(str) == cc_m, "Cliente"] = m_nom
-                            guardar_tabla(df_ven, "vencimientos")
-                            
-                        if not df_aud.empty and cc_m in df_aud["Cedula"].astype(str).values:
-                            df_aud.loc[df_aud["Cedula"].astype(str) == cc_m, "Cliente"] = m_nom
-                            guardar_tabla(df_aud, "audiencias")
-                            
-                        registrar_log("SISTEMA", f"Modificó expediente de: {cc_m}")
-                        st.success("¡Datos actualizados correctamente en toda la plataforma!")
-                        st.rerun()
-        else:
-            st.info("No hay clientes activos para modificar.")
-        st.markdown("</div>", unsafe_allow_html=True)
+                        # Validar si cambiaron la cédula y si la nueva ya existe en otro cliente
+                        if str(m_cc) != str(cc_m) and str(m_cc) in df_cli["Cedula"].astype(str).values:
+                            st.error(f"❌ La cédula {m_cc} ya le pertenece a otro cliente en el sistema.")
+                        else:
+                            # 1. Renombrar la carpeta en el servidor si cambió el nombre o la cédula
+                            old_path = estructurar_carpetas(cc_m, str(datos_c["Nombre"]))
+                            new_path = os.path.join(CARP_EXP, f"{m_cc} - {m_nom}")
+                            if old_path != new
     
 # --- 3. CONTRATOS E INICIO Y LAS 30 PLANTILLAS DE WHATSAPP ---
 elif st.session_state.pagina_actual == 'Contratos':
