@@ -529,46 +529,49 @@ elif st.session_state.pagina_actual == 'Nuevo':
         st.markdown("</div>", unsafe_allow_html=True)
         
    # ---------------------------------------------
-    # PESTAÑA 2: MODIFICAR CLIENTE (DIRECTO SIN ST.FORM)
+    # PESTAÑA 2: MODIFICAR CLIENTE (CORREGIDO SIN CREAR NUEVOS)
     # ---------------------------------------------
     with tab_editar:
         st.markdown("<div class='module-card module-card-blue'>", unsafe_allow_html=True)
-        # Recargar clientes activos frescos de la memoria
+        
+        # Leemos los datos en vivo para asegurar refresco
         df_frescos = leer_tabla("clientes", ["Cedula", "Nombre", "Fuerza", "Telefono", "Email", "Deuda_Est", "Ingresos", "Senal", "F_Actualizacion", "Estado", "F_Borrado"])
         df_act_frescos = df_frescos[df_frescos["Estado"] == "Activo"].copy()
         
         if not df_act_frescos.empty:
-            cli_mod = st.selectbox("Seleccionar Cliente a Modificar:", df_act_frescos["Cedula"].astype(str) + " - " + df_act_frescos["Nombre"], key="sel_mod_directo")
+            cli_mod = st.selectbox("Seleccionar Cliente a Modificar:", df_act_frescos["Cedula"].astype(str) + " - " + df_act_frescos["Nombre"], key="sel_cliente_a_editar")
+            
             if cli_mod:
-                cc_m = cli_mod.split(" - ")[0]
-                datos_c = df_act_frescos[df_act_frescos["Cedula"].astype(str) == cc_m].iloc[0]
+                cc_original = cli_mod.split(" - ")[0]
+                datos_c = df_act_frescos[df_act_frescos["Cedula"].astype(str) == str(cc_original)].iloc[0]
                 
-                st.warning("⚠️ Editar la Cédula o Nombre actualizará automáticamente los contratos, finanzas y carpetas asociadas.")
+                st.warning("⚠️ Los cambios realizados aquí sobrescribirán al cliente seleccionado. No se creará un cliente nuevo.")
                 
+                # Usamos keys dinámicas atadas a la cédula original para forzar a Streamlit a actualizar los inputs al cambiar de cliente
                 mc_a, mc_b = st.columns(2)
-                with mc_a: m_cc = st.text_input("Cédula de Ciudadanía", value=str(cc_m), key="inp_m_cc")
-                with mc_b: m_nom = st.text_input("Nombre Completo", value=str(datos_c["Nombre"]), key="inp_m_nom")
+                with mc_a: m_cc = st.text_input("Cédula de Ciudadanía", value=str(datos_c["Cedula"]), key=f"inp_cc_{cc_original}")
+                with mc_b: m_nom = st.text_input("Nombre Completo", value=str(datos_c["Nombre"]), key=f"inp_nom_{cc_original}")
                 
                 opciones_fza = ["Policía Nacional", "Ejército Nacional", "Armada Nacional", "Fuerza Aérea", "Retirado / Pensionado", "Civil"]
                 fza_actual = str(datos_c.get("Fuerza", "Civil"))
                 idx_fza = opciones_fza.index(fza_actual) if fza_actual in opciones_fza else 5
-                m_fza = st.selectbox("Facción", opciones_fza, index=idx_fza, key="inp_m_fza")
+                m_fza = st.selectbox("Facción", opciones_fza, index=idx_fza, key=f"inp_fza_{cc_original}")
                 
                 mc1, mc2, mc3 = st.columns(3)
-                with mc1: m_tel = st.text_input("WhatsApp / Celular", value=str(datos_c.get("Telefono", "")), key="inp_m_tel")
-                with mc2: m_mail = st.text_input("Correo Electrónico", value=str(datos_c.get("Email", "")), key="inp_m_mail")
-                with mc3: m_deuda = st.text_input("Deuda Aprox ($)", value=str(datos_c.get("Deuda_Est", "")), key="inp_m_deuda")
+                with mc1: m_tel = st.text_input("WhatsApp / Celular", value=str(datos_c.get("Telefono", "")), key=f"inp_tel_{cc_original}")
+                with mc2: m_mail = st.text_input("Correo Electrónico", value=str(datos_c.get("Email", "")), key=f"inp_mail_{cc_original}")
+                with mc3: m_deuda = st.text_input("Deuda Aprox ($)", value=str(datos_c.get("Deuda_Est", "")), key=f"inp_deuda_{cc_original}")
                 
                 st.markdown("<br>", unsafe_allow_html=True)
                 
-                # BOTÓN DIRECTO (SIN FORMULARIO) - RESPONDE AL INSTANTE AL CLIC
-                if st.button("💾 GUARDAR CAMBIOS DE INMEDIATO", key="btn_guardar_directo"):
-                    if str(m_cc) != str(cc_m) and str(m_cc) in df_frescos["Cedula"].astype(str).values:
-                        st.error(f"❌ La cédula {m_cc} ya le pertenece a otro cliente.")
+                if st.button("💾 SOBRESCRIBIR Y GUARDAR CAMBIOS", key=f"btn_save_{cc_original}"):
+                    # Validar si cambió la cédula y si la nueva cédula ya pertenece a otro cliente distinto
+                    if str(m_cc) != str(cc_original) and str(m_cc) in df_frescos["Cedula"].astype(str).values:
+                        st.error(f"❌ La cédula {m_cc} ya pertenece a otro expediente en el sistema.")
                     else:
-                        with st.spinner("Guardando y sincronizando con Google Sheets..."):
-                            # 1. Renombrar carpeta
-                            old_path = os.path.join(CARP_EXP, f"{cc_m} - {str(datos_c['Nombre'])}")
+                        with st.spinner("Modificando cliente en Google Sheets..."):
+                            # 1. Renombrar la carpeta física si cambió el nombre o la cédula
+                            old_path = os.path.join(CARP_EXP, f"{cc_original} - {str(datos_c['Nombre'])}")
                             new_path = os.path.join(CARP_EXP, f"{m_cc} - {m_nom}")
                             if old_path != new_path:
                                 try:
@@ -577,38 +580,37 @@ elif st.session_state.pagina_actual == 'Nuevo':
                                 except Exception: pass
                                 estructurar_carpetas(str(m_cc), m_nom)
                             
-                            # 2. Modificar en Clientes
-                            df_frescos["Telefono"] = df_frescos["Telefono"].astype(str)
-                            df_frescos["Deuda_Est"] = df_frescos["Deuda_Est"].astype(str)
+                            # 2. Modificar la fila EXACTA en la tabla Clientes (Sin concat para no crear un nuevo registro)
+                            idx_filas = df_frescos.index[df_frescos["Cedula"].astype(str) == str(cc_original)].tolist()
+                            if idx_filas:
+                                idx_exacto = idx_filas[0]
+                                df_frescos.loc[idx_exacto, "Cedula"] = str(m_cc)
+                                df_frescos.loc[idx_exacto, "Nombre"] = str(m_nom)
+                                df_frescos.loc[idx_exacto, "Fuerza"] = str(m_fza)
+                                df_frescos.loc[idx_exacto, "Telefono"] = str(m_tel)
+                                df_frescos.loc[idx_exacto, "Email"] = str(m_mail)
+                                df_frescos.loc[idx_exacto, "Deuda_Est"] = str(m_deuda)
+                                df_frescos.loc[idx_exacto, "F_Actualizacion"] = hoy.strftime("%Y-%m-%d")
+                                
+                                guardar_tabla(df_frescos, "clientes")
                             
-                            mask_cli = df_frescos["Cedula"].astype(str) == str(cc_m)
-                            df_frescos.loc[mask_cli, "Cedula"] = str(m_cc)
-                            df_frescos.loc[mask_cli, "Nombre"] = m_nom
-                            df_frescos.loc[mask_cli, "Fuerza"] = m_fza
-                            df_frescos.loc[mask_cli, "Telefono"] = str(m_tel)
-                            df_frescos.loc[mask_cli, "Email"] = m_mail
-                            df_frescos.loc[mask_cli, "Deuda_Est"] = str(m_deuda)
-                            df_frescos.loc[mask_cli, "F_Actualizacion"] = hoy.strftime("%Y-%m-%d")
-                            
-                            guardar_tabla(df_frescos, "clientes")
-                            
-                            # 3. Modificar en demás tablas (Efecto Cascada)
+                            # 3. Efecto Cascada en las demás tablas (Sobrescribir la cédula vieja con la nueva)
                             for t_nom, t_cols in [("finanzas", ["Cedula", "Honorarios", "Abonado"]), 
                                                    ("actuaciones", ["ID_Act", "Cedula", "Fecha", "Tipo", "Juzgado", "Radicado", "Anotacion"]),
                                                    ("vencimientos", ["ID_Ven", "Cedula", "Cliente", "Asunto", "Fecha_Limite", "Estado"]),
                                                    ("acreedores", ["ID_Acr", "Cedula", "Acreedor", "Cuantia", "Clase"]),
                                                    ("audiencias", ["ID_Aud", "Cedula", "Cliente", "Fecha_Hora", "Motivo"])]:
                                 df_t = leer_tabla(t_nom, t_cols)
-                                if not df_t.empty and str(cc_m) in df_t["Cedula"].astype(str).values:
-                                    mask_t = df_t["Cedula"].astype(str) == str(cc_m)
+                                if not df_t.empty and str(cc_original) in df_t["Cedula"].astype(str).values:
+                                    mask_t = df_t["Cedula"].astype(str) == str(cc_original)
                                     df_t.loc[mask_t, "Cedula"] = str(m_cc)
                                     if "Cliente" in df_t.columns:
-                                        df_t.loc[mask_t, "Cliente"] = m_nom
+                                        df_t.loc[mask_t, "Cliente"] = str(m_nom)
                                     guardar_tabla(df_t, t_nom)
                                     
-                            registrar_log("SISTEMA", f"Modificó expediente directo: {cc_m} -> {m_cc}")
+                            registrar_log("SISTEMA", f"Modificó expediente exacto: {cc_original} -> {m_cc}")
                             
-                            st.success("🎉 ¡ÉXITO! Datos modificados y sincronizados en Google Sheets.")
+                            st.success("✅ ¡Cliente modificado y sincronizado con éxito!")
                             time.sleep(1.5)
                             st.rerun()
         else:
