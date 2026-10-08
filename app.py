@@ -984,14 +984,12 @@ elif st.session_state.pagina_actual == 'Contratos':
                 print(f"Error en subir_doc_local_a_drive: {e}")
 
         if senal == 0:
-            # 1. Asegurar carpeta del cliente y subcarpeta Financiero en Drive
             nombre_cliente = f"{cc_s} - {nom_s}"
             sub_id = None
             arch_drive = []
             
             if gc_drive:
                 try:
-                    # Buscar carpeta principal del cliente
                     q1 = f"name='{nombre_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and trashed=false"
                     r1 = gc_drive.files().list(q=q1, orderBy="createdTime desc", fields="files(id)").execute()
                     carpetas = r1.get('files', [])
@@ -1000,15 +998,12 @@ elif st.session_state.pagina_actual == 'Contratos':
                         meta_cli = {'name': nombre_cliente, 'parents': [CARPETA_RAIZ_DRIVE_ID], 'mimeType': 'application/vnd.google-apps.folder'}
                         cli_creada = gc_drive.files().create(body=meta_cli, fields='id').execute()
                         cli_id = cli_creada.get('id')
-                        
-                        # Crear las 4 subcarpetas obligatorias
                         for sub_nombre in ["Financiero", "Juzgado", "Notaria", "Acreedores"]:
                             meta_sub = {'name': sub_nombre, 'parents': [cli_id], 'mimeType': 'application/vnd.google-apps.folder'}
                             gc_drive.files().create(body=meta_sub, fields='id').execute()
                     else:
                         cli_id = carpetas[0]['id']
                     
-                    # Buscar subcarpeta Financiero
                     q2 = f"name='Financiero' and '{cli_id}' in parents and trashed=false"
                     r2 = gc_drive.files().list(q=q2, fields="files(id)").execute()
                     subs = r2.get('files', [])
@@ -1020,7 +1015,6 @@ elif st.session_state.pagina_actual == 'Contratos':
                     else:
                         sub_id = subs[0]['id']
                     
-                    # Listar archivos actuales en Financiero
                     q3 = f"'{sub_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
                     r3 = gc_drive.files().list(q=q3, fields="files(name)").execute()
                     arch_drive = [a['name'] for a in r3.get('files', [])]
@@ -1035,31 +1029,39 @@ elif st.session_state.pagina_actual == 'Contratos':
                 col = c_a if i < 4 else c_b
                 nombre_corto = d.split(". ")[1]
                 
+                # Verificamos si ya está registrado en Google Drive
                 if any(nombre_corto in f for f in arch_drive): 
                     col.success(f"✔️ {d}")
                 else:
                     upl = col.file_uploader(f"📥 Subir: {d}", key=f"auto_up_{cc_s}_{i}")
-                    file_key = f"subido_{cc_s}_{i}"
+                    file_key = f"procesando_{cc_s}_{i}"
                     
+                    # Si el usuario seleccionó un archivo y no se ha procesado en esta sesión...
                     if upl is not None and st.session_state.get(file_key) != upl.name:
                         if sub_id and gc_drive:
                             with st.spinner(f"Subiendo {d} a Google Drive..."):
                                 try:
-                                    # Método blindado con archivo temporal físico
+                                    # Nombre limpio para el archivo en la nube
                                     nombre_archivo = f"{nombre_corto}_{upl.name}"
-                                    temp_path = f"temp_{nombre_archivo}"
+                                    temp_path = f"temp_{cc_s}_{i}_{int(time.time())}.pdf"
+                                    
+                                    # Guardamos temporalmente el buffer en disco
                                     with open(temp_path, "wb") as f:
                                         f.write(upl.getbuffer())
                                     
+                                    # Subida directa mediante la API de Google Drive
                                     meta = {'name': nombre_archivo, 'parents': [sub_id]}
                                     media = MediaFileUpload(temp_path, resumable=False)
                                     gc_drive.files().create(body=meta, media_body=media, fields='id').execute()
                                     
-                                    if os.path.exists(temp_path): os.remove(temp_path)
+                                    # Limpieza de archivo temporal local
+                                    if os.path.exists(temp_path): 
+                                        os.remove(temp_path)
                                     
+                                    # Marcamos este archivo como procesado para evitar bucles
                                     st.session_state[file_key] = upl.name
                                     
-                                    # Verificar si ya completó los 8
+                                    # Verificamos si completó los 8 documentos en Drive
                                     q_check = f"'{sub_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
                                     r_check = gc_drive.files().list(q=q_check, fields="files(name)").execute()
                                     arch_actualizados = [a['name'] for a in r_check.get('files', [])]
@@ -1067,8 +1069,10 @@ elif st.session_state.pagina_actual == 'Contratos':
                                     if len(arch_actualizados) >= 8:
                                         df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 1
                                         guardar_tabla(df_cli, "clientes")
+                                        
                                 except Exception as e:
-                                    st.error(f"Error al subir archivo: {e}")
+                                    st.error(f"Error al subir: {e}")
+                            
                             st.rerun()
 
         elif senal == 2:
