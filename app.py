@@ -46,6 +46,9 @@ SCOPES = [
 # ID de tu Bóveda Maestra en Drive (¡REEMPLAZA ESTO!)
 CARPETA_RAIZ_DRIVE_ID = "1MC6wHXaV557prpKV-KCRc8yeCdphD6U8"
 
+# ID de la Papelera en Drive (¡NUEVO!)
+CARPETA_PAPELERA_DRIVE_ID = "1MGBXOKbPuAE6xsf53AcCjwMFE_yzDbir"
+
 # Conexión Global a Google Drive
 @st.cache_resource
 def conectar_gdrive():
@@ -61,6 +64,37 @@ def conectar_gdrive():
     return None
 
 gc_drive = conectar_gdrive()
+
+def mover_a_papelera_drive(cc, nom):
+    if not gc_drive: return False
+    
+    nombre_carpeta_cliente = f"{cc} - {nom}"
+    
+    try:
+        # 1. Buscar la carpeta del cliente dentro de la Bóveda Maestra
+        query = f"name='{nombre_carpeta_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        resultados = gc_drive.files().list(q=query, fields="files(id, parents)").execute()
+        archivos = resultados.get('files', [])
+        
+        if archivos:
+            carpeta_id = archivos[0]['id']
+            # Obtener los padres actuales (la Bóveda) para quitarlos
+            padres_viejos = ",".join(archivos[0].get('parents', []))
+            
+            # 2. Mover la carpeta (Se le agrega el padre Papelera y se le quita el padre Bóveda)
+            gc_drive.files().update(
+                fileId=carpeta_id,
+                addParents=CARPETA_PAPELERA_DRIVE_ID,
+                removeParents=padres_viejos,
+                fields='id, parents'
+            ).execute()
+            return True
+            
+        return False
+        
+    except Exception as e:
+        print(f"Error moviendo la carpeta a la Papelera de Drive: {e}")
+        return False
 
 # ==========================================
 # 1. CORE & CONFIGURACIÓN DE SESIÓN Y GSHEETS
