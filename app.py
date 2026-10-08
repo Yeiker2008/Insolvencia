@@ -958,21 +958,35 @@ elif st.session_state.pagina_actual == 'Contratos':
             st.markdown(f"<h3 style='font-size:18px;'>Fase 1: Recolección Documental ({len(arch_drive)}/8)</h3>", unsafe_allow_html=True)
             docs = ["1. CÉDULA", "2. CERTIFICADO REDAM", "3. DATACRÉDITO", "4. CERTIFICADO SIMIT", "5. CERTIFICADO RAMA", "6. CERTIFICADO RUNT", "7. TRADICIÓN Y LIBERTAD", "8. CERTIFICADO RUES"]
             c_a, c_b = st.columns(2)
+            
             for i, d in enumerate(docs):
                 col = c_a if i < 4 else c_b
-                if any(d.split(". ")[1] in f for f in arch_drive): 
+                nombre_corto = d.split(". ")[1]
+                
+                # Verificamos si ya está subido en Drive
+                if any(nombre_corto in f for f in arch_drive): 
                     col.success(f"✔️ {d}")
                 else:
-                    upl = col.file_uploader(f"📥 Subir: {d}", key=f"up_{i}")
-                    if upl and sub_id:
-                        nombre_archivo = f"{d.split('. ')[1]}_{upl.name}"
-                        with st.spinner(f"Subiendo {d} a Drive..."):
-                            subir_a_drive_mem(upl, nombre_archivo, sub_id)
-                            arch_drive, _ = obtener_archivos_y_id(cc_s, nom_s, "Financiero")
-                            if len(arch_drive) >= 8:
-                                df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 1
-                                guardar_tabla(df_cli, "clientes")
-                        st.rerun()
+                    with col.container():
+                        st.markdown(f"<p style='font-size:13px; font-weight:bold; margin-bottom:0;'>Subir: {d}</p>", unsafe_allow_html=True)
+                        upl = st.file_uploader(f"Subir {d}", key=f"up_{i}", label_visibility="collapsed")
+                        
+                        # Botón individual de envío para evitar que se borre de memoria
+                        if upl is not None:
+                            if st.button(f"📤 Guardar {nombre_corto} en Drive", key=f"btn_subir_{i}"):
+                                if sub_id:
+                                    with st.spinner(f"Subiendo {d} a Google Drive..."):
+                                        nombre_archivo = f"{nombre_corto}_{upl.name}"
+                                        subir_a_drive_mem(upl, nombre_archivo, sub_id)
+                                        
+                                        # Verificamos cuántos hay ahora en Drive
+                                        arch_actualizados, _ = obtener_archivos_y_id(cc_s, nom_s, "Financiero")
+                                        if len(arch_actualizados) >= 8:
+                                            df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 1
+                                            guardar_tabla(df_cli, "clientes")
+                                    st.success("¡Archivo guardado en Drive con éxito!")
+                                    time.sleep(1)
+                                    st.rerun()
                         
         elif senal == 1:
             st.markdown("<h3 style='font-size:18px;'>Fase 2: Motor de Contratos</h3>", unsafe_allow_html=True)
