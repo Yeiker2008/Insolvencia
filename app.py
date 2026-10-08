@@ -1162,7 +1162,7 @@ elif st.session_state.pagina_actual == 'Sistema':
         st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
         st.success("☁️ Base de datos sincronizada y operando 100% sobre Google Sheets Master.")
         
-        # --- BOTONES DE DESCARGA ---
+        # --- BOTONES DE DESCARGA DE RESGUARDOS ---
         st.markdown("<h3>📥 Descarga de Resguardos CSV Locales</h3>", unsafe_allow_html=True)
         col_d1, col_d2, col_d3 = st.columns(3)
         with col_d1:
@@ -1175,37 +1175,38 @@ elif st.session_state.pagina_actual == 'Sistema':
             csv_l = df_log.to_csv(index=False).encode('utf-8')
             st.download_button("📥 Descargar Logs CSV", csv_l, "logs.csv", "text/csv")
             
-        # --- TABLA DE AUDITORÍA EN VIVO ---
-        st.markdown("<br><h3>📜 Registro de Auditoría en Vivo (Logs de Actividad)</h3>", unsafe_allow_html=True)
-        if not df_log.empty:
-            st.dataframe(df_log.iloc[::-1], use_container_width=True, hide_index=True)
+        st.markdown("<br><hr style='border-color: #CBD5E1;'>", unsafe_allow_html=True)
+        
+        # --- TERMINAL DE AUDITORÍA QUIRÚRGICA POR PERFIL ---
+        st.markdown("<h3>🔍 Terminal de Auditoría Detallada por Usuario</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #64748B; font-size: 13px;'>Selecciona un colaborador para revisar el rastro exacto de todas sus operaciones (subidas de archivos, modificaciones, cambios y accesos).</p>", unsafe_allow_html=True)
+        
+        # Extraer la lista de usuarios únicos que aparecen en los logs o en la tabla de usuarios
+        usuarios_auditables = sorted(df_usr["Alias"].unique().tolist()) if not df_usr.empty else []
+        if not df_log.empty and "Usuario" in df_log.columns:
+            logs_users = df_log["Usuario"].dropna().unique().tolist()
+            usuarios_auditables = sorted(list(set(usuarios_auditables + logs_users)))
+            
+        if usuarios_auditables:
+            usuario_seleccionado = st.selectbox("👤 Seleccionar Colaborador a Auditar:", usuarios_auditables)
+            
+            if usuario_seleccionado:
+                st.markdown(f"<br><h4 style='color: #2563EB;'>📜 Historial de Actividad: {usuario_seleccionado}</h4>", unsafe_allow_html=True)
+                
+                # Filtrar logs de este usuario específico
+                if not df_log.empty:
+                    df_log_usuario = df_log[df_log["Usuario"].astype(str) == str(usuario_seleccionado)].copy()
+                    
+                    if not df_log_usuario.empty:
+                        # Mostrar el número total de acciones registradas
+                        st.info(f"Se encontraron **{len(df_log_usuario)}** acciones registradas en el sistema para este perfil.")
+                        # Mostrar la tabla ordenada de más reciente a más antigua
+                        st.dataframe(df_log_usuario.iloc[::-1][["Timestamp", "Modulo", "Accion"]], use_container_width=True, hide_index=True)
+                    else:
+                        st.info(f"✨ El colaborador '{usuario_seleccionado}' no registra eventos o acciones en el sistema todavía.")
+                else:
+                    st.info("No hay registros de auditoría disponibles en la base de datos.")
         else:
-            st.info("No hay registros de auditoría recientes.")
+            st.warning("No hay usuarios registrados para auditar.")
+            
         st.markdown("</div>", unsafe_allow_html=True)
-
-# --- 13. PAPELERA DE RECICLAJE ---
-elif st.session_state.pagina_actual == 'Papelera':
-    st.markdown("<h1>🗑️ Papelera de Reciclaje</h1>", unsafe_allow_html=True)
-    st.markdown("<div class='module-card'>", unsafe_allow_html=True)
-    
-    if not df_papelera.empty:
-        st.warning("⚠️ Los expedientes guardados aquí se borrarán del sistema permanentemente después de 30 días.")
-        # Mostrar tabla de borrados
-        st.dataframe(df_papelera[["Cedula", "Nombre", "Fuerza", "F_Borrado"]], use_container_width=True, hide_index=True)
-        
-        st.markdown("<hr style='border-color: #27272A;'>", unsafe_allow_html=True)
-        st.markdown("<h3>🔄 Restaurar Expediente</h3>", unsafe_allow_html=True)
-        with st.form("form_restaurar"):
-            cliente_res = st.selectbox("Seleccionar expediente para restaurar:", df_papelera["Cedula"].astype(str) + " - " + df_papelera["Nombre"])
-            if st.form_submit_button("RESTAURAR A CLIENTES ACTIVOS"):
-                cc_r = cliente_res.split(" - ")[0]
-                df_cli.loc[df_cli["Cedula"].astype(str) == cc_r, "Estado"] = "Activo"
-                df_cli.loc[df_cli["Cedula"].astype(str) == cc_r, "F_Borrado"] = ""
-                guardar_tabla(df_cli, "clientes")
-                registrar_log("SISTEMA", f"Expediente restaurado: {cc_r}")
-                st.success("¡Expediente restaurado! Ya vuelve a aparecer en la plataforma principal.")
-                st.rerun()
-    else:
-        st.info("✨ La papelera está completamente vacía.")
-        
-    st.markdown("</div>", unsafe_allow_html=True)
