@@ -571,6 +571,58 @@ elif st.session_state.pagina_actual == 'Nuevo':
                                     pass
                                 estructurar_carpetas(str(m_cc), m_nom)
                                 
+                            # 2. Actualizar BD Maestra (Blindaje contra TypeError de Pandas)
+                            # Convertimos columnas conflictivas a texto ANTES de inyectar datos
+                            df_cli["Telefono"] = df_cli["Telefono"].astype(str)
+                            df_cli["Deuda_Est"] = df_cli["Deuda_Est"].astype(str)
+                            
+                            mask_cli = df_cli["Cedula"].astype(str) == str(cc_m)
+                            df_cli.loc[mask_cli, "Cedula"] = str(m_cc)
+                            df_cli.loc[mask_cli, "Nombre"] = m_nom
+                            df_cli.loc[mask_cli, "Fuerza"] = m_fza
+                            df_cli.loc[mask_cli, "Telefono"] = m_tel
+                            df_cli.loc[mask_cli, "Email"] = m_mail
+                            df_cli.loc[mask_cli, "Deuda_Est"] = m_deuda
+                            df_cli.loc[mask_cli, "F_Actualizacion"] = hoy.strftime("%Y-%m-%d")
+                            guardar_tabla(df_cli, "clientes")
+                            
+                            # 3. Efecto Cascada Seguro
+                            if not df_fin.empty and cc_m in df_fin["Cedula"].astype(str).values:
+                                mask_fin = df_fin["Cedula"].astype(str) == str(cc_m)
+                                df_fin.loc[mask_fin, "Cedula"] = str(m_cc)
+                                guardar_tabla(df_fin, "finanzas")
+                                
+                            if not df_act.empty and cc_m in df_act["Cedula"].astype(str).values:
+                                mask_act = df_act["Cedula"].astype(str) == str(cc_m)
+                                df_act.loc[mask_act, "Cedula"] = str(m_cc)
+                                guardar_tabla(df_act, "actuaciones")
+                                
+                            if not df_ven.empty and cc_m in df_ven["Cedula"].astype(str).values:
+                                mask_ven = df_ven["Cedula"].astype(str) == str(cc_m)
+                                df_ven.loc[mask_ven, "Cliente"] = m_nom
+                                df_ven.loc[mask_ven, "Cedula"] = str(m_cc)
+                                guardar_tabla(df_ven, "vencimientos")
+                                
+                            if not df_acr.empty and cc_m in df_acr["Cedula"].astype(str).values:
+                                mask_acr = df_acr["Cedula"].astype(str) == str(cc_m)
+                                df_acr.loc[mask_acr, "Cedula"] = str(m_cc)
+                                guardar_tabla(df_acr, "acreedores")
+                                
+                            if not df_aud.empty and cc_m in df_aud["Cedula"].astype(str).values:
+                                mask_aud = df_aud["Cedula"].astype(str) == str(cc_m)
+                                df_aud.loc[mask_aud, "Cliente"] = m_nom
+                                df_aud.loc[mask_aud, "Cedula"] = str(m_cc)
+                                guardar_tabla(df_aud, "audiencias")
+                                
+                            registrar_log("SISTEMA", f"Modificó expediente: {cc_m} -> {m_cc}")
+                            
+                            st.success("✅ ¡Datos actualizados y guardados correctamente en la Nube!")
+                            time.sleep(2)
+                            st.rerun()
+        else:
+            st.info("No hay clientes activos para modificar.")
+        st.markdown("</div>", unsafe_allow_html=True)
+                                
                             # 2. Actualizar BD Maestra usando la coordenada exacta de la fila (Blindado)
                             idx_list = df_cli.index[df_cli["Cedula"].astype(str) == cc_m].tolist()
                             if idx_list:
