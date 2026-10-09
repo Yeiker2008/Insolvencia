@@ -26,15 +26,15 @@ try:
 except ImportError:
     GSPREAD_DISPONIBLE = False
 
-# --- PODERES PARA GOOGLE DRIVE (LA BÓVEDA MAESTRA) ---
+# --- PODERES PARA GOOGLE DRIVE Y SHEETS ---
 try:
-    from google.oauth2.credentials import Credentials
+    from google.oauth2.credentials import Credentials  # <-- ESTA LÍNEA ES LA CLAVE
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
     import io
     GDRIVE_DISPONIBLE = True
 except ImportError:
-    st.error("⚠️ Abre la terminal y ejecuta: pip install google-api-python-client")
+    st.error("⚠️ Abre la terminal y ejecuta: pip install google-api-python-client google-auth")
     GDRIVE_DISPONIBLE = False
 
 # Definimos los permisos necesarios (Sheets y Drive)
@@ -49,12 +49,11 @@ CARPETA_RAIZ_DRIVE_ID = "1MC6wHXaV557prpKV-KCRc8yeCdphD6U8"
 # ID de la Papelera en Drive
 CARPETA_PAPELERA_DRIVE_ID = "1MGBXOKbPuAE6xsf53AcCjwMFE_yzDbir"
 
-# Conexión y Auto-creación Global en Google Sheets con tu Token Maestro
+# Conexión Global a Google Drive usando tu Token Maestro
 @st.cache_resource
-def conectar_gsheets():
-    if not GSPREAD_DISPONIBLE: return None
+def conectar_gdrive():
+    if not GDRIVE_DISPONIBLE: return None
     try:
-        # 🔥 USAMOS EXACTAMENTE EL MISMO TOKEN MAESTRO DE DRIVE PARA SHEETS
         creds = Credentials(
             None,                                           # 1. token
             st.secrets["google_refresh_token"],             # 2. refresh_token
@@ -62,6 +61,28 @@ def conectar_gsheets():
             st.secrets["google_client_id"],                 # 4. client_id
             st.secrets["google_client_secret"],             # 5. client_secret
             SCOPES                                          # 6. scopes
+        )
+        drive_service = build('drive', 'v3', credentials=creds)
+        return drive_service
+    except Exception as e:
+        st.error(f"❌ ERROR CONECTANDO A GOOGLE DRIVE: {e}")
+        return None
+
+gc_drive = conectar_gdrive()
+
+
+# Conexión Global a Google Sheets usando el mismo Token Maestro
+@st.cache_resource
+def conectar_gsheets():
+    if not GSPREAD_DISPONIBLE: return None
+    try:
+        creds = Credentials(
+            None,
+            st.secrets["google_refresh_token"],
+            "https://oauth2.googleapis.com/token",
+            st.secrets["google_client_id"],
+            st.secrets["google_client_secret"],
+            SCOPES
         )
         client = gspread.authorize(creds)
         
@@ -79,9 +100,10 @@ def conectar_gsheets():
         
         return sheet
     except Exception as e:
-        st.error(f"🚨 ERROR CRÍTICO CREANDO/CONECTANDO GSHEETS: {e}")
-    return None
-gc_drive = conectar_gdrive()
+        st.error(f"🚨 ERROR CRÍTICO GSHEETS: {e}")
+        return None
+
+gc_sheet = conectar_gsheets()
 
 def mover_a_papelera_drive(cc, nom):
     if not gc_drive: return False
