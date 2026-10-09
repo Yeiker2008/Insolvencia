@@ -45,17 +45,18 @@ CARPETA_RAIZ_DRIVE_ID = "1MC6wHXaV557prpKV-KCRc8yeCdphD6U8"
 # ID de la Papelera en Drive
 CARPETA_PAPELERA_DRIVE_ID = "1MGBXOKbPuAE6xsf53AcCjwMFE_yzDbir"
 
-# Conexión Global a Google Drive usando tu Token Maestro
+# Conexión Global a Google Drive
 @st.cache_resource
 def conectar_gdrive():
     if not GDRIVE_DISPONIBLE: return None
     try:
+        # Se elimina el parámetro scopes para evitar el rechazo de Google
         creds = Credentials.from_authorized_user_info({
             "client_id": st.secrets["google_client_id"],
             "client_secret": st.secrets["google_client_secret"],
             "refresh_token": st.secrets["google_refresh_token"],
             "token_uri": "https://oauth2.googleapis.com/token"
-        }, scopes=SCOPES)
+        })
         drive_service = build('drive', 'v3', credentials=creds)
         return drive_service
     except Exception as e:
@@ -65,17 +66,18 @@ def conectar_gdrive():
 gc_drive = conectar_gdrive()
 
 
-# Conexión Global a Google Sheets usando el mismo Token Maestro
+# Conexión Global a Google Sheets
 @st.cache_resource
 def conectar_gsheets():
     if not GSPREAD_DISPONIBLE: return None
     try:
+        # Se elimina el parámetro scopes para evitar el rechazo de Google
         creds = Credentials.from_authorized_user_info({
             "client_id": st.secrets["google_client_id"],
             "client_secret": st.secrets["google_client_secret"],
             "refresh_token": st.secrets["google_refresh_token"],
             "token_uri": "https://oauth2.googleapis.com/token"
-        }, scopes=SCOPES)
+        })
         client = gspread.authorize(creds)
         
         nombre_hoja = "DB_Insolvencia_Master"
@@ -96,7 +98,6 @@ def conectar_gsheets():
         return None
 
 gc_sheet = conectar_gsheets()
-
 def mover_a_papelera_drive(cc, nom):
     if not gc_drive: return False
     
