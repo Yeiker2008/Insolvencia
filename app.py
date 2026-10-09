@@ -49,11 +49,12 @@ CARPETA_RAIZ_DRIVE_ID = "1MC6wHXaV557prpKV-KCRc8yeCdphD6U8"
 # ID de la Papelera en Drive
 CARPETA_PAPELERA_DRIVE_ID = "1MGBXOKbPuAE6xsf53AcCjwMFE_yzDbir"
 
-# Conexión Global a Google Drive usando tus credenciales OAuth personales (100% gratis)
+# Conexión y Auto-creación Global en Google Sheets con tu Token Maestro
 @st.cache_resource
-def conectar_gdrive():
-    if not GDRIVE_DISPONIBLE: return None
+def conectar_gsheets():
+    if not GSPREAD_DISPONIBLE: return None
     try:
+        # 🔥 USAMOS EXACTAMENTE EL MISMO TOKEN MAESTRO DE DRIVE PARA SHEETS
         creds = Credentials(
             None,                                           # 1. token
             st.secrets["google_refresh_token"],             # 2. refresh_token
@@ -62,11 +63,24 @@ def conectar_gdrive():
             st.secrets["google_client_secret"],             # 5. client_secret
             SCOPES                                          # 6. scopes
         )
-        drive_service = build('drive', 'v3', credentials=creds)
-        return drive_service
+        client = gspread.authorize(creds)
+        
+        nombre_hoja = "DB_Insolvencia_Master"
+        
+        try:
+            sheet = client.open(nombre_hoja)
+        except gspread.SpreadsheetNotFound:
+            sheet = client.create(nombre_hoja)
+            pestañas = ["clientes", "finanzas", "actuaciones", "vencimientos", "acreedores", "audiencias", "tareas", "usuarios", "logs"]
+            first_sheet = sheet.get_sheet_by_id(0)
+            first_sheet.update_title(pestañas[0])
+            for p in pestañas[1:]:
+                sheet.add_worksheet(title=p, rows="100", cols="20")
+        
+        return sheet
     except Exception as e:
-        st.error(f"❌ ERROR CONECTANDO A GOOGLE DRIVE: {e}")
-        return None
+        st.error(f"🚨 ERROR CRÍTICO CREANDO/CONECTANDO GSHEETS: {e}")
+    return None
 gc_drive = conectar_gdrive()
 
 def mover_a_papelera_drive(cc, nom):
