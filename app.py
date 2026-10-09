@@ -45,7 +45,7 @@ CARPETA_RAIZ_DRIVE_ID = "1MC6wHXaV557prpKV-KCRc8yeCdphD6U8"
 # ID de la Papelera en Drive
 CARPETA_PAPELERA_DRIVE_ID = "1MGBXOKbPuAE6xsf53AcCjwMFE_yzDbir"
 
-# Conexión Global a Google Drive
+# Conexión Global a Google Drive blindada contra caídas de servidor
 def conectar_gdrive():
     if not GDRIVE_DISPONIBLE: return None
     try:
@@ -55,7 +55,7 @@ def conectar_gdrive():
             "refresh_token": st.secrets["google_refresh_token"],
             "token_uri": "https://oauth2.googleapis.com/token"
         })
-        # 🔥 LA SOLUCIÓN AL SEGMENTATION FAULT: cache_discovery=False
+        # Forzamos la desactivación de la caché de archivos del sistema para evitar el Segmentation Fault
         drive_service = build('drive', 'v3', credentials=creds, cache_discovery=False)
         return drive_service
     except Exception as e:
