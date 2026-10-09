@@ -9,6 +9,9 @@ import random
 import uuid
 from datetime import datetime, timedelta
 import time
+import requests
+import json
+
 try:
     from fpdf import FPDF
 except ImportError:
@@ -45,31 +48,165 @@ CARPETA_RAIZ_DRIVE_ID = "1MC6wHXaV557prpKV-KCRc8yeCdphD6U8"
 # ID de la Papelera en Drive
 CARPETA_PAPELERA_DRIVE_ID = "1MGBXOKbPuAE6xsf53AcCjwMFE_yzDbir"
 
-# Conexión Global a Google Drive blindada contra caídas de servidor
-def conectar_gdrive():
-    if not GDRIVE_DISPONIBLE: return None
+# ==========================================
+# GESTOR DE GOOGLE DRIVE VÍA API REST (CERO SEGMENTATION FAULT)
+# ==========================================
+
+def obtener_token_fresco():
+    """Genera un token de acceso válido usando tu Refresh Token personal"""
+    from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request
+    creds = Credentials.from_authorized_user_info({
+        "client_id": st.secrets["google_client_id"],
+        "client_secret": st.secrets["google_client_secret"],
+        "refresh_token": st.secrets["google_refresh_token"],
+        "token_uri": "https://oauth2.googleapis.com/token"
+    })
+    creds.refresh(Request())
+    return creds.token
+
+def estructurar_carpetas(cc, nom):
+    """Crea la carpeta del cliente y sus subcarpetas obligatorias en Drive"""
     try:
-        creds = Credentials.from_authorized_user_info({
-            "client_id": st.secrets["google_client_id"],
-            "client_secret": st.secrets["google_client_secret"],
-            "refresh_token": st.secrets["google_refresh_token"],
-            "token_uri": "https://oauth2.googleapis.com/token"
-        })
-        # Forzamos la desactivación de la caché de archivos del sistema para evitar el Segmentation Fault
-        drive_service = build('drive', 'v3', credentials=creds, cache_discovery=False)
-        return drive_service
+        token = obtener_token_fresco()
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        nombre_carpeta_cliente = f"{cc} - {nom}"
+        
+        query = f"name='{nombre_carpeta_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        res = requests.get(f"https://www.googleapis.com/drive/v3/files?q={requests.utils.quote(query)}", headers=headers).json()
+        archivos = res.get('files', [])
+        
+        if not archivos:
+            meta = {
+                'name': nombre_carpeta_cliente,
+                'parents': [CARPETA_RAIZ_DRIVE_ID],
+                'mimeType': 'application/vnd.google-apps.folder'
+            }
+            crear_cli = requests.post("https://www.googleapis.com/drive/v3/files", headers=headers, json=meta).json()
+            cliente_id = crear_cli.get('id')
+            
+            for sub in ["Financiero", "Juzgado", "Notaria", "Acreedores"]:
+                meta_sub = {
+                    'name': sub,
+                    'parents': [cliente_id],
+                    'mimeType': 'application/vnd.google-apps.folder'
+                }
+                requests.post("https://www.googleapis.com/drive/v3/files", headers=headers, json=meta_sub)
+            return True
+        return False
     except Exception as e:
-        st.error(f"❌ ERROR CONECTANDO A GOOGLE DRIVE: {e}")
+        print(f"Error estructurando carpetas: {e}")
+        return False
+
+def obtener_id_subcarpeta_drive(cc, nom, nombre_subcarpeta):
+    """Obtiene el ID de una subcarpeta interna del cliente"""
+    try:
+        token = obtener_token_fresco()
+        headers = {"Authorization": f"Bearer {token}"}
+        nombre_carpeta_cliente = f"{cc} - {nom}"
+        
+        q1 = f"name='{nombre_carpeta_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        r1 = requests.get(f"https://www.googleapis.com/drive/v3/files?q={requests.utils.quote(q1)}", headers=headers).json().get('files', [])
+        if not r1: return None
+        cliente_id = r1[0]['id']
+        
+        q2 = f"name='{nombre_subcarpeta}' and '{cliente_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        r2 = requests.get(f"https://www.googleapis.com/drive/v3/files?q={requests.utils.quote(q2)}", headers=headers).json().get('files', [])
+        if r2: return r2[0]['id']
+        return None
+    except:
         return None
 
-gc_drive = conectar_gdrive()
+def subir_archivo_directo_drive(file_obj, filename, folder_id):
+    """Sube cualquier archivo cargado desde Streamlit a Google Drive vía REST API"""
+    if not folder_id: return False
+    try:
+        token = obtener_token_fresco()
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        metadata = {
+            "name": filename,
+            "parents": [folder_id]
+        }
+        
+        files = {
+            'data': ('metadata', json.dumps(metadata), 'application/json'),
+            'file': (filename, file_obj.getbuffer(), 'application/octet-stream')
+        }
+        
+        response = requests.post(
+            "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+            headers=headers,
+            files=files
+        )
+        return response.status_code == 200
+    except Exception as e:
+        print(f"Error en subida directa: {e}")
+        return False
+
+def listar_y_descargar_archivos_drive(folder_id):
+    """Lista los archivos de una carpeta en Drive para mostrarlos en la Bóveda"""
+    if not folder_id: return []
+    try:
+        token = obtener_token_fresco()
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        query = f"'{folder_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
+        res = requests.get(f"https://www.googleapis.com/drive/v3/files?q={requests.utils.quote(query)}&fields=files(id,name)", headers=headers).json()
+        archivos = res.get('files', [])
+        lista = []
+        
+        for a in archivos:
+            dl_res = requests.get(f"https://www.googleapis.com/drive/v3/files/{a['id']}?alt=media", headers=headers)
+            lista.append({'id': a['id'], 'name': a['name'], 'content': dl_res.content})
+        return lista
+    except:
+        return []
+
+def mover_a_papelera_drive(cc, nom):
+    try:
+        token = obtener_token_fresco()
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        nombre_carpeta_cliente = f"{cc} - {nom}"
+        
+        query = f"name='{nombre_carpeta_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        res = requests.get(f"https://www.googleapis.com/drive/v3/files?q={requests.utils.quote(query)}", headers=headers).json().get('files', [])
+        
+        if res:
+            cid = res[0]['id']
+            padres = ",".join(res[0].get('parents', []))
+            params = {"addParents": CARPETA_PAPELERA_DRIVE_ID, "removeParents": padres}
+            requests.patch(f"https://www.googleapis.com/drive/v3/files/{cid}", headers=headers, params=params)
+            return True
+        return False
+    except:
+        return False
+
+def restaurar_de_papelera_drive(cc, nom):
+    try:
+        token = obtener_token_fresco()
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        nombre_carpeta_cliente = f"{cc} - {nom}"
+        
+        query = f"name='{nombre_carpeta_cliente}' and '{CARPETA_PAPELERA_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        res = requests.get(f"https://www.googleapis.com/drive/v3/files?q={requests.utils.quote(query)}", headers=headers).json().get('files', [])
+        
+        if res:
+            cid = res[0]['id']
+            padres = ",".join(res[0].get('parents', []))
+            params = {"addParents": CARPETA_RAIZ_DRIVE_ID, "removeParents": padres}
+            requests.patch(f"https://www.googleapis.com/drive/v3/files/{cid}", headers=headers, params=params)
+            return True
+        return False
+    except:
+        return False
 
 
 # Conexión Global a Google Sheets
+@st.cache_resource
 def conectar_gsheets():
     if not GSPREAD_DISPONIBLE: return None
     try:
-        # Se elimina el parámetro scopes para evitar el rechazo de Google
         creds = Credentials.from_authorized_user_info({
             "client_id": st.secrets["google_client_id"],
             "client_secret": st.secrets["google_client_secret"],
@@ -96,124 +233,6 @@ def conectar_gsheets():
         return None
 
 gc_sheet = conectar_gsheets()
-def mover_a_papelera_drive(cc, nom):
-    if not gc_drive: return False
-    
-    nombre_carpeta_cliente = f"{cc} - {nom}"
-    
-    try:
-        # 1. Buscar la carpeta del cliente dentro de la Bóveda Maestra
-        query = f"name='{nombre_carpeta_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
-        resultados = gc_drive.files().list(q=query, fields="files(id, parents)").execute()
-        archivos = resultados.get('files', [])
-        
-        if archivos:
-            carpeta_id = archivos[0]['id']
-            # Obtener los padres actuales (la Bóveda) para quitarlos
-            padres_viejos = ",".join(archivos[0].get('parents', []))
-            
-            # 2. Mover la carpeta (Se le agrega el padre Papelera y se le quita el padre Bóveda)
-            gc_drive.files().update(
-                fileId=carpeta_id,
-                addParents=CARPETA_PAPELERA_DRIVE_ID,
-                removeParents=padres_viejos,
-                fields='id, parents'
-            ).execute()
-            return True
-            
-        return False
-        
-    except Exception as e:
-        print(f"Error moviendo la carpeta a la Papelera de Drive: {e}")
-        return False
-
-def restaurar_de_papelera_drive(cc, nom):
-    if not gc_drive: return False
-    nombre_carpeta_cliente = f"{cc} - {nom}"
-    try:
-        # Buscar la carpeta en la Papelera
-        query = f"name='{nombre_carpeta_cliente}' and '{CARPETA_PAPELERA_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
-        resultados = gc_drive.files().list(q=query, fields="files(id, parents)").execute()
-        archivos = resultados.get('files', [])
-        
-        if archivos:
-            carpeta_id = archivos[0]['id']
-            padres_viejos = ",".join(archivos[0].get('parents', []))
-            
-            # Mover de vuelta a la Bóveda Maestra
-            gc_drive.files().update(
-                fileId=carpeta_id,
-                addParents=CARPETA_RAIZ_DRIVE_ID,
-                removeParents=padres_viejos,
-                fields='id, parents'
-            ).execute()
-            return True
-        return False
-    except Exception as e:
-        print(f"Error restaurando carpeta en Drive: {e}")
-        return False
-
-def obtener_id_subcarpeta_drive(cc, nom, nombre_subcarpeta):
-    """Busca y retorna el ID de la subcarpeta interna en Google Drive"""
-    if not gc_drive: return None
-    nombre_carpeta_cliente = f"{cc} - {nom}"
-    try:
-        # 1. Buscar carpeta principal del cliente en la Bóveda
-        query = f"name='{nombre_carpeta_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
-        res = gc_drive.files().list(q=query, fields="files(id)").execute()
-        carpetas = res.get('files', [])
-        if not carpetas: return None
-        cliente_id = carpetas[0]['id']
-        
-        # 2. Buscar la subcarpeta interna
-        query_sub = f"name='{nombre_subcarpeta}' and '{cliente_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
-        res_sub = gc_drive.files().list(q=query_sub, fields="files(id)").execute()
-        subcarpetas = res_sub.get('files', [])
-        if subcarpetas: return subcarpetas[0]['id']
-        return None
-    except Exception as e:
-        print(f"Error obteniendo subcarpeta en Drive: {e}")
-        return None
-
-def subir_archivo_a_drive(file_obj, filename, folder_id):
-    """Sube un archivo cargado desde Streamlit directamente a una carpeta de Google Drive"""
-    if not gc_drive or not folder_id: return False
-    try:
-        temp_path = f"temp_{filename}"
-        with open(temp_path, "wb") as f:
-            f.write(file_obj.getbuffer())
-            
-        file_metadata = {'name': filename, 'parents': [folder_id]}
-        media = MediaFileUpload(temp_path, resumable=True)
-        gc_drive.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        
-        if os.path.exists(temp_path): os.remove(temp_path)
-        return True
-    except Exception as e:
-        print(f"Error subiendo archivo a Drive: {e}")
-        return False
-
-def listar_y_descargar_archivos_drive(folder_id):
-    """Lista todos los archivos de una subcarpeta en Drive y retorna una lista con su nombre y contenido binario"""
-    if not gc_drive or not folder_id: return []
-    try:
-        query = f"'{folder_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
-        res = gc_drive.files().list(q=query, fields="files(id, name)").execute()
-        archivos = res.get('files', [])
-        lista_descargas = []
-        for a in archivos:
-            request = gc_drive.files().get_media(fileId=a['id'])
-            fh = io.BytesIO()
-            downloader = MediaIoBaseDownload(fh, request)
-            done = False
-            while not done:
-                status, done = downloader.next_chunk()
-            fh.seek(0)
-            lista_descargas.append({'id': a['id'], 'name': a['name'], 'content': fh.getvalue()})
-        return lista_descargas
-    except Exception as e:
-        print(f"Error listando archivos de Drive: {e}")
-        return []
 
 # ==========================================
 # 1. CORE & CONFIGURACIÓN DE SESIÓN Y GSHEETS
@@ -231,40 +250,6 @@ if 'kicked' not in st.session_state: st.session_state.kicked = False
 if 'kicked_reason' not in st.session_state: st.session_state.kicked_reason = ""
 
 def cambiar_pagina(p): st.session_state.pagina_actual = p
-
-# Conexión y Auto-creación Global en Google Sheets con aviso visual
-@st.cache_resource
-def conectar_gsheets():
-    if not GSPREAD_DISPONIBLE: return None
-    try:
-        if "gcp_service_account" in st.secrets:
-            scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-            client = gspread.authorize(creds)
-            
-            nombre_hoja = "DB_Insolvencia_Master"
-            
-            try:
-                sheet = client.open(nombre_hoja)
-            except gspread.SpreadsheetNotFound:
-                sheet = client.create(nombre_hoja)
-                pestañas = ["clientes", "finanzas", "actuaciones", "vencimientos", "acreedores", "audiencias", "tareas", "usuarios", "logs"]
-                first_sheet = sheet.get_sheet_by_id(0)
-                first_sheet.update_title(pestañas[0])
-                for p in pestañas[1:]:
-                    sheet.add_worksheet(title=p, rows="100", cols="20")
-                try:
-                    sheet.share('chincuenta5025@gmail.com', perm_type='user', role='writer')
-                except:
-                    pass
-            
-            return sheet
-    except Exception as e:
-        st.error(f"🚨 ERROR CRÍTICO CREANDO/CONECTANDO GSHEETS: {e}")
-    return None
-
-gc_sheet = conectar_gsheets()
 
 @st.cache_data(ttl=120, show_spinner=False)
 def leer_tabla(nombre_tabla, columnas_def):
@@ -420,41 +405,6 @@ def registrar_log(modulo, accion):
         guardar_tabla(df_log, "logs")
     except: pass
 
-def estructurar_carpetas(cc, nom):
-    if not gc_drive: return False
-    
-    nombre_carpeta_cliente = f"{cc} - {nom}"
-    
-    try:
-        query = f"name='{nombre_carpeta_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
-        resultados = gc_drive.files().list(q=query, fields="files(id, name)").execute()
-        archivos = resultados.get('files', [])
-        
-        if not archivos:
-            metadata_cliente = {
-                'name': nombre_carpeta_cliente,
-                'parents': [CARPETA_RAIZ_DRIVE_ID],
-                'mimeType': 'application/vnd.google-apps.folder'
-            }
-            carpeta_cliente = gc_drive.files().create(body=metadata_cliente, fields='id').execute()
-            cliente_id = carpeta_cliente.get('id')
-            
-            subcarpetas = ["Financiero", "Juzgado", "Notaria", "Acreedores"]
-            for sub in subcarpetas:
-                metadata_sub = {
-                    'name': sub,
-                    'parents': [cliente_id],
-                    'mimeType': 'application/vnd.google-apps.folder'
-                }
-                gc_drive.files().create(body=metadata_sub, fields='id').execute()
-            return True
-            
-        return False
-        
-    except Exception as e:
-        print(f"Error creando carpetas en Drive: {e}")
-        return False
-
 def limpiar_num(val):
     try: return float(str(val).replace("$","").replace(".","").replace(",","").strip())
     except: return 0.0
@@ -523,7 +473,8 @@ def mostrar_boveda(cc, nom):
                             use_container_width=True
                         )
                         if c_del.button("🗑️", key=f"del_drive_{cc}_{sub}_{a['id']}", help="Borrar archivo de Google Drive"):
-                            gc_drive.files().delete(fileId=a['id']).execute()
+                            token = obtener_token_fresco()
+                            requests.delete(f"https://www.googleapis.com/drive/v3/files/{a['id']}", headers={"Authorization": f"Bearer {token}"})
                             st.rerun()
                 else:
                     col.markdown("<span style='color:#64748B; font-size:12px;'><i>Carpeta vacía</i></span>", unsafe_allow_html=True)
@@ -721,13 +672,13 @@ elif st.session_state.pagina_actual == 'Nuevo':
             c4, c5, c6 = st.columns(3)
             with c4: tel = st.text_input("WhatsApp / Celular")
             with c5: mail = st.text_input("Correo Electrónico")
-            with c6: deuda = st.text_input("Deuda Aprox (\$)")
+            with c6: deuda = st.text_input("Deuda Aprox ($)")
             
             st.markdown("<hr style='border-color: #E2E8F0;'>", unsafe_allow_html=True)
             st.markdown("<p style='color:#2563EB; font-weight:bold;'>💰 Configuración Financiera del Caso</p>", unsafe_allow_html=True)
             cf1, cf2 = st.columns(2)
-            with cf1: honorarios_totales = st.text_input("Valor Total de Honorarios del Caso (\$)", value="0")
-            with cf2: abono_inicial = st.text_input("Abono Inicial Recibido (\$)", value="0")
+            with cf1: honorarios_totales = st.text_input("Valor Total de Honorarios del Caso ($)", value="0")
+            with cf2: abono_inicial = st.text_input("Abono Inicial Recibido ($)", value="0")
             
             if st.form_submit_button("CREAR BÓVEDA Y REGISTRAR EN NUBE"):
                 if not cc or not nom: st.error("Cédula y Nombre son obligatorios.")
@@ -910,96 +861,18 @@ elif st.session_state.pagina_actual == 'Contratos':
         st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
         
         def obtener_archivos_y_id(cc, nom, subcarpeta):
-            if not gc_drive: return [], None
-            nombre_cliente = f"{cc} - {nom}"
-            try:
-                q1 = f"name='{nombre_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and trashed=false"
-                r1 = gc_drive.files().list(q=q1, orderBy="createdTime desc", fields="files(id)").execute()
-                carpetas = r1.get('files', [])
-                
-                if not carpetas:
-                    meta_cli = {'name': nombre_cliente, 'parents': [CARPETA_RAIZ_DRIVE_ID], 'mimeType': 'application/vnd.google-apps.folder'}
-                    cli_creada = gc_drive.files().create(body=meta_cli, fields='id').execute()
-                    cli_id = cli_creada.get('id')
-                    
-                    for sub_nombre in ["Financiero", "Juzgado", "Notaria", "Acreedores"]:
-                        meta_sub = {'name': sub_nombre, 'parents': [cli_id], 'mimeType': 'application/vnd.google-apps.folder'}
-                        gc_drive.files().create(body=meta_sub, fields='id').execute()
-                else:
-                    cli_id = carpetas[0]['id']
-                
-                q2 = f"name='{subcarpeta}' and '{cli_id}' in parents and trashed=false"
-                r2 = gc_drive.files().list(q=q2, fields="files(id)").execute()
-                subs = r2.get('files', [])
-                
-                if not subs:
-                    meta_sub = {'name': subcarpeta, 'parents': [cli_id], 'mimeType': 'application/vnd.google-apps.folder'}
-                    sub_creada = gc_drive.files().create(body=meta_sub, fields='id').execute()
-                    sub_id = sub_creada.get('id')
-                else:
-                    sub_id = subs[0]['id']
-                
-                q3 = f"'{sub_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
-                r3 = gc_drive.files().list(q=q3, fields="files(name)").execute()
-                return [a['name'] for a in r3.get('files', [])], sub_id
-                
-            except Exception as e:
-                print(f"Error en obtener_archivos_y_id: {e}")
-                return [], None
-
-        def subir_a_drive_mem(file_obj, filename, folder_id):
-            if not gc_drive or not folder_id: return
-            try:
-                temp_path = f"temp_{filename}"
-                with open(temp_path, "wb") as f:
-                    f.write(file_obj.getbuffer())
-                
-                meta = {'name': filename, 'parents': [folder_id]}
-                media = MediaFileUpload(temp_path, resumable=False)
-                gc_drive.files().create(body=meta, media_body=media, fields='id').execute()
-                
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
-            except Exception as e:
-                print(f"Error crítico subiendo a Drive: {e}")
+            sub_id = obtener_id_subcarpeta_drive(cc, nom, subcarpeta)
+            if sub_id:
+                archivos = listar_y_descargar_archivos_drive(sub_id)
+                return [a['name'] for a in archivos], sub_id
+            return [], None
 
         if senal == 0:
-            nombre_cliente = f"{cc_s} - {nom_s}"
-            sub_id = None
+            sub_id = obtener_id_subcarpeta_drive(cc_s, nom_s, "Financiero")
             arch_drive = []
-            
-            if gc_drive:
-                try:
-                    q1 = f"name='{nombre_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and trashed=false"
-                    r1 = gc_drive.files().list(q=q1, orderBy="createdTime desc", fields="files(id)").execute()
-                    carpetas = r1.get('files', [])
-                    
-                    if not carpetas:
-                        meta_cli = {'name': nombre_cliente, 'parents': [CARPETA_RAIZ_DRIVE_ID], 'mimeType': 'application/vnd.google-apps.folder'}
-                        cli_creada = gc_drive.files().create(body=meta_cli, fields='id').execute()
-                        cli_id = cli_creada.get('id')
-                        for sub_nombre in ["Financiero", "Juzgado", "Notaria", "Acreedores"]:
-                            meta_sub = {'name': sub_nombre, 'parents': [cli_id], 'mimeType': 'application/vnd.google-apps.folder'}
-                            gc_drive.files().create(body=meta_sub, fields='id').execute()
-                    else:
-                        cli_id = carpetas[0]['id']
-                    
-                    q2 = f"name='Financiero' and '{cli_id}' in parents and trashed=false"
-                    r2 = gc_drive.files().list(q=q2, fields="files(id)").execute()
-                    subs = r2.get('files', [])
-                    
-                    if not subs:
-                        meta_sub = {'name': 'Financiero', 'parents': [cli_id], 'mimeType': 'application/vnd.google-apps.folder'}
-                        sub_creada = gc_drive.files().create(body=meta_sub, fields='id').execute()
-                        sub_id = sub_creada.get('id')
-                    else:
-                        sub_id = subs[0]['id']
-                    
-                    q3 = f"'{sub_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
-                    r3 = gc_drive.files().list(q=q3, fields="files(name)").execute()
-                    arch_drive = [a['name'] for a in r3.get('files', [])]
-                except Exception as e:
-                    st.error(f"❌ ERROR DE DRIVE AL CREAR CARPETAS: {e}")
+            if sub_id:
+                archivos_list = listar_y_descargar_archivos_drive(sub_id)
+                arch_drive = [a['name'] for a in archivos_list]
 
             st.markdown(f"<h3 style='font-size:18px;'>Fase 1: Recolección Documental ({len(arch_drive)}/8)</h3>", unsafe_allow_html=True)
             docs = ["1. CÉDULA", "2. CERTIFICADO REDAM", "3. DATACRÉDITO", "4. CERTIFICADO SIMIT", "5. CERTIFICADO RAMA", "6. CERTIFICADO RUNT", "7. TRADICIÓN Y LIBERTAD", "8. CERTIFICADO RUES"]
@@ -1016,48 +889,32 @@ elif st.session_state.pagina_actual == 'Contratos':
                     file_key = f"procesando_{cc_s}_{i}"
                     
                     if upl is not None and st.session_state.get(file_key) != upl.name:
-                        if sub_id and gc_drive:
+                        if sub_id:
                             with st.spinner(f"Subiendo {d} a Google Drive..."):
                                 try:
                                     nombre_archivo = f"{nombre_corto}_{upl.name}"
-                                    temp_path = f"temp_{cc_s}_{i}_{int(time.time())}.pdf"
-                                    
-                                    with open(temp_path, "wb") as f:
-                                        f.write(upl.getbuffer())
-                                    
-                                    meta = {'name': nombre_archivo, 'parents': [sub_id]}
-                                    media = MediaFileUpload(temp_path, resumable=False)
-                                    gc_drive.files().create(body=meta, media_body=media, fields='id').execute()
-                                    
-                                    if os.path.exists(temp_path): 
-                                        os.remove(temp_path)
-                                    
+                                    subir_archivo_directo_drive(upl, nombre_archivo, sub_id)
                                     st.session_state[file_key] = upl.name
                                     
-                                    q_check = f"'{sub_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
-                                    r_check = gc_drive.files().list(q=q_check, fields="files(name)").execute()
-                                    arch_actualizados = [a['name'] for a in r_check.get('files', [])]
-                                    
-                                    if len(arch_actualizados) >= 8:
+                                    archivos_actualizados = listar_y_descargar_archivos_drive(sub_id)
+                                    if len(archivos_actualizados) >= 8:
                                         df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 1
                                         guardar_tabla(df_cli, "clientes")
-                                        
                                 except Exception as e:
                                     st.error(f"❌ ERROR AL SUBIR EL ARCHIVO: {e}")
-                            
                             st.rerun()
 
         elif senal == 2:
             st.markdown("<h3 style='font-size:18px;'>Fase 3: Recolección de Firmas</h3>", unsafe_allow_html=True)
             st.info("📌 Los contratos listos para firmar están arriba, en la Bóveda Central. Descárgalos de ahí y sube los firmados aquí abajo.")
             
-            _, sub_id_notaria = obtener_archivos_y_id(cc_s, nom_s, "Notaria")
+            sub_id_notaria = obtener_id_subcarpeta_drive(cc_s, nom_s, "Notaria")
             
             uf = st.file_uploader("📥 Subir Paquete de Contratos Firmados (PDF)", type=["pdf"], key=f"up_firmados_{cc_s}")
             file_key_f = f"procesando_firmados_{cc_s}"
             if uf and sub_id_notaria and st.session_state.get(file_key_f) != uf.name:
                 with st.spinner("Subiendo contratos firmados automáticamente a Drive..."):
-                    subir_a_drive_mem(uf, f"Firmados_{uf.name}", sub_id_notaria)
+                    subir_archivo_directo_drive(uf, f"Firmados_{uf.name}", sub_id_notaria)
                     st.session_state[file_key_f] = uf.name
                     df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 3
                     guardar_tabla(df_cli, "clientes")
@@ -1069,10 +926,10 @@ elif st.session_state.pagina_actual == 'Contratos':
             st.info("📌 Los contratos ya están firmados. Sube aquí el comprobante de radicación oficial (Centro de Conciliación o Juzgado).")
             urad = st.file_uploader("📥 Subir Soporte de Radicado (PDF/IMG)", type=["pdf", "jpg", "png"], key=f"up_radicado_{cc_s}")
             file_key_r = f"procesando_radicado_{cc_s}"
-            _, sub_id_juz = obtener_archivos_y_id(cc_s, nom_s, "Juzgado")
+            sub_id_juz = obtener_id_subcarpeta_drive(cc_s, nom_s, "Juzgado")
             if urad and sub_id_juz and st.session_state.get(file_key_r) != urad.name:
                 with st.spinner("Subiendo radicado automáticamente a Drive..."):
-                    subir_a_drive_mem(urad, f"Radicado_{urad.name}", sub_id_juz)
+                    subir_archivo_directo_drive(urad, f"Radicado_{urad.name}", sub_id_juz)
                     st.session_state[file_key_r] = urad.name
                     df_cli.loc[df_cli["Cedula"].astype(str) == str(cc_s), "Senal"] = 4
                     guardar_tabla(df_cli, "clientes")
@@ -1081,11 +938,12 @@ elif st.session_state.pagina_actual == 'Contratos':
                 
         elif senal >= 4: 
             st.success("✨ ¡Misión Cumplida! El expediente está oficialmente radicado y ha superado todas las fases documentales.")
-            arch_juz, _ = obtener_archivos_y_id(cc_s, nom_s, "Juzgado")
-            if arch_juz:
+            sub_id_juz = obtener_id_subcarpeta_drive(cc_s, nom_s, "Juzgado")
+            if sub_id_juz:
+                arch_juz = listar_y_descargar_archivos_drive(sub_id_juz)
                 for ar in arch_juz:
-                    if "Radicado" in ar:
-                        st.markdown(f"📄 **Soporte Oficial guardado en Drive:** `{ar}`")
+                    if "Radicado" in ar['name']:
+                        st.markdown(f"📄 **Soporte Oficial guardado en Drive:** `{ar['name']}`")
             
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -1095,8 +953,7 @@ elif st.session_state.pagina_actual == 'Actuaciones':
     if not df_activos.empty:
         c_a = st.selectbox("Expediente:", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"])
         cc_a, nom_a = c_a.split(" - ")[0], c_a.split(" - ")[1]
-        rb = estructurar_carpetas(cc_a, nom_a)
-        r4 = os.path.join(rb, "04_Log_Judicial")
+        estructurar_carpetas(cc_a, nom_a)
         mostrar_boveda(cc_a, nom_a)
         
         st.markdown("<div class='module-card'>", unsafe_allow_html=True)
@@ -1109,7 +966,8 @@ elif st.session_state.pagina_actual == 'Actuaciones':
             doc_up = st.file_uploader("Adjuntar PDF de la actuación (Opcional)")
             if st.form_submit_button("REGISTRAR EN GOOGLE SHEETS"):
                 if doc_up:
-                    with open(os.path.join(r4, f"{tipo_a}_{doc_up.name}"), "wb") as f: f.write(doc_up.getbuffer())
+                    sub_id_juz = obtener_id_subcarpeta_drive(cc_a, nom_a, "Juzgado")
+                    if sub_id_juz: subir_archivo_directo_drive(doc_up, f"{tipo_a}_{doc_up.name}", sub_id_juz)
                 n_act = pd.DataFrame([{"ID_Act": f"ACT-{hoy.strftime('%H%M%S')}", "Cedula": str(cc_a), "Fecha": hoy.strftime("%Y-%m-%d"), "Tipo": tipo_a, "Juzgado": juzgado, "Radicado": rad_jud, "Anotacion": anota}])
                 guardar_tabla(pd.concat([df_act, n_act], ignore_index=True), "actuaciones")
                 st.success("Registrado y sincronizado."); st.rerun()
@@ -1152,7 +1010,7 @@ elif st.session_state.pagina_actual == 'Acreedores':
             cl_a = st.selectbox("Expediente de Insolvencia", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"])
             c1, c2, c3 = st.columns(3)
             with c1: nom_acr = st.text_input("Acreedor")
-            with c2: cuantia_acr = st.number_input("Cuantía ($)", min_value=0, step=100000)
+            with c2: cuantia_acr = st.number_input("Cuantía (\$)", min_value=0, step=100000)
             with c3: clase_acr = st.selectbox("Clase", ["Primera", "Segunda", "Tercera", "Cuarta", "Quinta"])
             if st.form_submit_button("AGREGAR PASIVO"):
                 cc_a = cl_a.split(" - ")[0]
