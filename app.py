@@ -37,9 +37,10 @@ except ImportError:
     st.error("⚠️ Abre la terminal y ejecuta: pip install google-api-python-client google-auth")
     GDRIVE_DISPONIBLE = False
 
-# Definimos los permisos necesarios (Sheets y Drive)
+# Definimos el permiso maestro (Drive tiene acceso total a todo, incluyendo Sheets)
 SCOPES = [
-    'https://spreadsheets.google.com/feeds',
+    'https://www.googleapis.com/auth/drive'
+]
     'https://www.googleapis.com/auth/drive'
 ]
 
