@@ -49,14 +49,14 @@ CARPETA_PAPELERA_DRIVE_ID = "1MGBXOKbPuAE6xsf53AcCjwMFE_yzDbir"
 def conectar_gdrive():
     if not GDRIVE_DISPONIBLE: return None
     try:
-        # Se elimina el parámetro scopes para evitar el rechazo de Google
         creds = Credentials.from_authorized_user_info({
             "client_id": st.secrets["google_client_id"],
             "client_secret": st.secrets["google_client_secret"],
             "refresh_token": st.secrets["google_refresh_token"],
             "token_uri": "https://oauth2.googleapis.com/token"
         })
-        drive_service = build('drive', 'v3', credentials=creds)
+        # 🔥 LA SOLUCIÓN AL SEGMENTATION FAULT: cache_discovery=False
+        drive_service = build('drive', 'v3', credentials=creds, cache_discovery=False)
         return drive_service
     except Exception as e:
         st.error(f"❌ ERROR CONECTANDO A GOOGLE DRIVE: {e}")
@@ -66,7 +66,6 @@ gc_drive = conectar_gdrive()
 
 
 # Conexión Global a Google Sheets
-@st.cache_resource
 def conectar_gsheets():
     if not GSPREAD_DISPONIBLE: return None
     try:
