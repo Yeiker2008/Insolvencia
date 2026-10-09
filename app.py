@@ -54,14 +54,12 @@ CARPETA_PAPELERA_DRIVE_ID = "1MGBXOKbPuAE6xsf53AcCjwMFE_yzDbir"
 def conectar_gdrive():
     if not GDRIVE_DISPONIBLE: return None
     try:
-        creds = Credentials(
-            None,                                           # 1. token
-            st.secrets["google_refresh_token"],             # 2. refresh_token
-            "https://oauth2.googleapis.com/token",          # 3. token_uri
-            st.secrets["google_client_id"],                 # 4. client_id
-            st.secrets["google_client_secret"],             # 5. client_secret
-            SCOPES                                          # 6. scopes
-        )
+        creds = Credentials.from_authorized_user_info({
+            "client_id": st.secrets["google_client_id"],
+            "client_secret": st.secrets["google_client_secret"],
+            "refresh_token": st.secrets["google_refresh_token"],
+            "token_uri": "https://oauth2.googleapis.com/token"
+        }, scopes=SCOPES)
         drive_service = build('drive', 'v3', credentials=creds)
         return drive_service
     except Exception as e:
@@ -76,14 +74,12 @@ gc_drive = conectar_gdrive()
 def conectar_gsheets():
     if not GSPREAD_DISPONIBLE: return None
     try:
-        creds = Credentials(
-            None,
-            st.secrets["google_refresh_token"],
-            "https://oauth2.googleapis.com/token",
-            st.secrets["google_client_id"],
-            st.secrets["google_client_secret"],
-            SCOPES
-        )
+        creds = Credentials.from_authorized_user_info({
+            "client_id": st.secrets["google_client_id"],
+            "client_secret": st.secrets["google_client_secret"],
+            "refresh_token": st.secrets["google_refresh_token"],
+            "token_uri": "https://oauth2.googleapis.com/token"
+        }, scopes=SCOPES)
         client = gspread.authorize(creds)
         
         nombre_hoja = "DB_Insolvencia_Master"
