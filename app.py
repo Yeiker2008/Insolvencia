@@ -40,7 +40,6 @@ except ImportError:
 # Definimos el permiso maestro (Drive tiene acceso total a todo, incluyendo Sheets)
 SCOPES = [
     'https://www.googleapis.com/auth/drive'
-]
     'https://www.googleapis.com/auth/drive'
 ]
 
