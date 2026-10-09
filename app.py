@@ -46,7 +46,6 @@ CARPETA_RAIZ_DRIVE_ID = "1MC6wHXaV557prpKV-KCRc8yeCdphD6U8"
 CARPETA_PAPELERA_DRIVE_ID = "1MGBXOKbPuAE6xsf53AcCjwMFE_yzDbir"
 
 # Conexión Global a Google Drive
-@st.cache_resource
 def conectar_gdrive():
     if not GDRIVE_DISPONIBLE: return None
     try:
