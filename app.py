@@ -972,7 +972,7 @@ elif st.session_state.pagina_actual == 'Contratos':
                     r3 = gc_drive.files().list(q=q3, fields="files(name)").execute()
                     arch_drive = [a['name'] for a in r3.get('files', [])]
                 except Exception as e:
-                    print(f"Error sincronizando carpetas: {e}")
+                    st.error(f"❌ ERROR DE DRIVE AL CREAR CARPETAS: {e}")
 
             st.markdown(f"<h3 style='font-size:18px;'>Fase 1: Recolección Documental ({len(arch_drive)}/8)</h3>", unsafe_allow_html=True)
             docs = ["1. CÉDULA", "2. CERTIFICADO REDAM", "3. DATACRÉDITO", "4. CERTIFICADO SIMIT", "5. CERTIFICADO RAMA", "6. CERTIFICADO RUNT", "7. TRADICIÓN Y LIBERTAD", "8. CERTIFICADO RUES"]
@@ -1016,7 +1016,7 @@ elif st.session_state.pagina_actual == 'Contratos':
                                         guardar_tabla(df_cli, "clientes")
                                         
                                 except Exception as e:
-                                    st.error(f"Error al subir: {e}")
+                                    st.error(f"❌ ERROR AL SUBIR EL ARCHIVO: {e}")
                             
                             st.rerun()
 
