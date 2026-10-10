@@ -283,18 +283,20 @@ def guardar_tabla(df, nombre_tabla):
     leer_tabla.clear()
 
 # ==========================================
-# 2. MOTOR CSS: SAAS CORPORATIVO LIMPIO
+# 2. MOTOR CSS: SAAS CORPORATIVO ADAPTATIVO (MÓVIL & DESKTOP)
 # ==========================================
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-    #MainMenu, footer, header {visibility: hidden !important; display: none !important;}
-    [data-testid="stHeader"] {display: none !important; visibility: hidden !important;}
+    
+    /* Footer oculto, pero mantenemos el header accesible para poder desplegar el sidebar en celulares */
+    footer {visibility: hidden !important; display: none !important;}
     
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; background-color: #F8FAFC !important; color: #1E293B !important; }
-    h1, h2, h3 { color: #0F172A !important; font-weight: 700; letter-spacing: -0.5px; }
+    h1, h2, h3, h4, h5, h6 { color: #0F172A !important; font-weight: 700; letter-spacing: -0.5px; }
     [data-testid="stAppViewContainer"] { background-color: #F4F7F8 !important; background-image: none !important; }
     
+    /* Ajuste de la barra lateral */
     [data-testid="stSidebar"] { background-color: #0F172A !important; border-right: 1px solid #1E293B !important; }
     [data-testid="stSidebar"] p, [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3, [data-testid="stSidebar"] span, [data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] { color: #F8FAFC !important; }
     
@@ -331,26 +333,25 @@ st.markdown("""
         transform: scale(1.03) translateY(-2px) !important;
     }
     
-    .module-card { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 30px; margin-bottom: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03); }
-    .module-card p { color: #475569 !important; } 
+    /* Corrección de contraste para tarjetas de contenido */
+    .module-card { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+    .module-card h3, .module-card h4, .module-card p, .module-card span, .module-card b { color: #1E293B !important; } 
     
-    .module-card-gold { border-top: 3px solid #2563EB !important; } 
-    .module-card-blue { border-top: 3px solid #0EA5E9 !important; }
-    .module-card-green { border-top: 3px solid #10B981 !important; }
+    .module-card-gold { border-top: 4px solid #2563EB !important; } 
+    .module-card-blue { border-top: 4px solid #0EA5E9 !important; }
+    .module-card-green { border-top: 4px solid #10B981 !important; }
     
     input, textarea, select, div[data-baseweb="select"] > div, div[data-baseweb="input"] > div { background-color: #FFFFFF !important; color: #0F172A !important; -webkit-text-fill-color: #0F172A !important; border: 1px solid #94A3B8 !important; border-radius: 6px !important; }
     input:focus, textarea:focus { border-color: #2563EB !important; box-shadow: 0 0 0 2px rgba(37,99,235,0.2) !important; }
     
-    .timeline { display: flex; justify-content: space-between; align-items: center; margin: 30px 0; position: relative; }
+    .timeline { display: flex; justify-content: space-between; align-items: center; margin: 20px 0; position: relative; }
     .timeline::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: #E2E8F0; z-index: 1; }
-    .step { position: relative; z-index: 2; background: #F8FAFC; padding: 8px 16px; border-radius: 20px; border: 2px solid #E2E8F0; color: #64748B; font-weight: 600; font-size: 12px; display: flex; align-items: center; text-transform: uppercase; }
+    .step { position: relative; z-index: 2; background: #F8FAFC; padding: 6px 12px; border-radius: 20px; border: 2px solid #E2E8F0; color: #64748B; font-weight: 600; font-size: 11px; display: flex; align-items: center; text-transform: uppercase; }
     .step.active { border-color: #2563EB; color: #2563EB; box-shadow: 0 0 0 4px rgba(37,99,235,0.1); background: #FFFFFF; }
     .step.completed { border-color: #10B981; color: #FFFFFF; background: #10B981; }
-    
-    .alerta-roja { animation: blinker 1.5s linear infinite; color: #EF4444 !important; font-weight: bold;}
-    @keyframes blinker { 50% { opacity: 0; } }
     </style>
 """, unsafe_allow_html=True)
+
 
 # ==========================================
 # 3. BASE DE DATOS Y CARGA CLOUD
