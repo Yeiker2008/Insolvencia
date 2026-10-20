@@ -792,57 +792,90 @@ elif st.session_state.pagina_actual == 'Contratos':
         mostrar_boveda(cc_s, nom_s)
 
         # ==========================================
-        # MÓDULO DE FASES: ENSAMBLAJE, FIRMAS Y RADICADO
+        # MÓDULO DE FASES: BARRA DE PROGRESO ÉLITE
         # ==========================================
-        st.markdown("### 🛤️ Fases del Proceso de Insolvencia")
+        st.markdown("### 🛤️ Gestión del Expediente")
 
-        tab1, tab2, tab3, tab4 = st.tabs(["1. VIABILIDAD", "2. ENSAMBLAJE", "3. FIRMAS", "4. RADICADO"])
+        # Selector de fase (Mueve la barra visual)
+        fase_actual = st.radio(
+            "Seleccione la fase:", 
+            ["1. CONTRATACIÓN", "2. VIABILIDAD", "3. ENSAMBLAJE", "4. RADICADO"], 
+            horizontal=True, 
+            label_visibility="collapsed"
+        )
 
-        with tab1:
-            st.info("✅ **Análisis de Viabilidad:** Cliente cumple con los requisitos de la Ley 1564 de 2012.")
-            st.text_area("Notas de Viabilidad", placeholder="Ej: El cliente tiene 3 embargos activos...")
+        # Lógica para colorear la barra de progreso según la fase seleccionada
+        f_num = int(fase_actual[0])
+        c1 = "active" if f_num == 1 else ("completed" if f_num > 1 else "")
+        c2 = "active" if f_num == 2 else ("completed" if f_num > 2 else "")
+        c3 = "active" if f_num == 3 else ("completed" if f_num > 3 else "")
+        c4 = "active" if f_num == 4 else ("completed" if f_num > 4 else "")
 
-        with tab2:
-            st.markdown("<div class='module-card-blue'>", unsafe_allow_html=True)
-            st.markdown("#### 📂 Recolección y Ensamblaje de Documentos")
-            archivo_ensamblaje = st.file_uploader("Seleccionar documento (PDF/Imagen)", type=["pdf", "png", "jpg", "jpeg"], key="ensam_up")
-            
-            if st.button("Subir al Expediente (Drive)", key="btn_ensam"):
-                if archivo_ensamblaje:
-                    st.success(f"📄 Archivo '{archivo_ensamblaje.name}' ensamblado y guardado en Drive correctamente.")
-                else:
-                    st.warning("⚠️ Selecciona un archivo primero.")
-            st.markdown("</div>", unsafe_allow_html=True)
+        # Dibuja la barra visual hermosa (HTML/CSS)
+        st.markdown(f"""
+        <div class="module-card" style="padding: 15px 30px; margin-bottom: 5px;">
+            <div class="timeline">
+                <div class="step {c1}">1. Contratos</div>
+                <div class="step {c2}">2. Viabilidad</div>
+                <div class="step {c3}">3. Ensamblaje</div>
+                <div class="step {c4}">4. Radicado</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        with tab3:
+        # --- CONTENIDOS DE CADA FASE ---
+
+        if f_num == 1:
             st.markdown("<div class='module-card-gold'>", unsafe_allow_html=True)
             st.markdown("#### ✍️ Firmas y Contrato de Representación")
             col1, col2 = st.columns(2)
             with col1:
+                st.write("**Paso 1: Generar Contrato**")
                 if st.button("📄 Generar Contrato de Servicios"):
-                    st.success("Contrato generado.")
+                    st.success("Contrato generado. Listo para descargar e imprimir.")
                     st.download_button("⬇️ Descargar", data="Contrato modelo de prueba", file_name="Contrato_Insolvencia.txt")
             with col2:
+                st.write("**Paso 2: Subir Firmado**")
                 archivo_firma = st.file_uploader("Subir contrato firmado", type=["pdf"], key="firma_up")
                 if st.button("Guardar Contrato Firmado"):
                     if archivo_firma:
-                        st.success("✅ Contrato archivado.")
+                        st.success("✅ Contrato archivado en Bóveda.")
                     else:
                         st.warning("⚠️ Falta el documento.")
             st.markdown("</div>", unsafe_allow_html=True)
 
-        with tab4:
+        elif f_num == 2:
+            st.markdown("<div class='module-card' style='border-top: 4px solid #8B5CF6;'>", unsafe_allow_html=True)
+            st.markdown("#### ⚖️ Análisis de Viabilidad")
+            st.info("Valide si el cliente cumple los requisitos del Art. 538 de la Ley 1564 de 2012.")
+            st.text_area("Notas y Concepto Jurídico", placeholder="Ej: Cumple con mora > 90 días en más del 50% del pasivo...")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        elif f_num == 3:
+            st.markdown("<div class='module-card-blue'>", unsafe_allow_html=True)
+            st.markdown("#### 📂 Recolección y Ensamblaje")
+            st.write("Sube los soportes: Cédula, extractos, Datacrédito, etc.")
+            archivo_ensamblaje = st.file_uploader("Seleccionar documento (PDF/Imagen)", type=["pdf", "png", "jpg", "jpeg"], key="ensam_up")
+            
+            if st.button("Subir al Expediente (Drive)", key="btn_ensam"):
+                if archivo_ensamblaje:
+                    st.success(f"📄 Archivo '{archivo_ensamblaje.name}' guardado en Drive correctamente.")
+                else:
+                    st.warning("⚠️ Selecciona un archivo primero.")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        elif f_num == 4:
             st.markdown("<div class='module-card-green'>", unsafe_allow_html=True)
             st.markdown("#### 🏛️ Radicación Oficial")
             codigo_radicado = st.text_input("Número de Radicado", placeholder="Ej: RAD-2026-00982")
             if st.button("🚀 Confirmar Radicación"):
                 if codigo_radicado:
-                    st.success(f"🎉 Radicado bajo el código {codigo_radicado}")
+                    st.success(f"🎉 Radicado en Notaría/Centro bajo el código {codigo_radicado}")
                 else:
                     st.error("⚠️ Ingresa el número.")
             st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
         
         st.markdown("<div class='module-card' style='border-top: 3px solid #10B981;'>", unsafe_allow_html=True)
         st.markdown("<h3>📱 Central Automática de WhatsApp</h3>", unsafe_allow_html=True)
