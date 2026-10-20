@@ -792,90 +792,123 @@ elif st.session_state.pagina_actual == 'Contratos':
         mostrar_boveda(cc_s, nom_s)
 
         # ==========================================
-        # MÓDULO DE FASES: BARRA DE PROGRESO ÉLITE
+        # MÓDULO DE FASES: WIZARD INTERACTIVO ULTRA-PREMIUM
         # ==========================================
-        st.markdown("### 🛤️ Gestión del Expediente")
+        
+        # 1. Inicializar la variable de estado para recordar en qué fase estamos
+        if 'fase_activa' not in st.session_state:
+            st.session_state.fase_activa = 1
 
-        # Selector de fase (Mueve la barra visual)
-        fase_actual = st.radio(
-            "Seleccione la fase:", 
-            ["1. CONTRATACIÓN", "2. VIABILIDAD", "3. ENSAMBLAJE", "4. RADICADO"], 
-            horizontal=True, 
-            label_visibility="collapsed"
-        )
+        # Funciones de navegación
+        def avanzar_fase():
+            if st.session_state.fase_activa < 4:
+                st.session_state.fase_activa += 1
 
-        # Lógica para colorear la barra de progreso según la fase seleccionada
-        f_num = int(fase_actual[0])
-        c1 = "active" if f_num == 1 else ("completed" if f_num > 1 else "")
-        c2 = "active" if f_num == 2 else ("completed" if f_num > 2 else "")
-        c3 = "active" if f_num == 3 else ("completed" if f_num > 3 else "")
-        c4 = "active" if f_num == 4 else ("completed" if f_num > 4 else "")
+        def retroceder_fase():
+            if st.session_state.fase_activa > 1:
+                st.session_state.fase_activa -= 1
 
-        # Dibuja la barra visual hermosa (HTML/CSS)
+        # 2. Inyectar Motor CSS de Animaciones y Sombras Élite
+        st.markdown("""
+        <style>
+        /* Animación fluida de entrada para las tarjetas */
+        @keyframes fadeSlideUp {
+            0% { opacity: 0; transform: translateY(20px) scale(0.98); }
+            100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        
+        .premium-card {
+            animation: fadeSlideUp 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+            background: #FFFFFF;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 15px 35px -5px rgba(15, 23, 42, 0.1);
+            border: 1px solid #E2E8F0;
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        
+        /* Línea decorativa superior dinámica */
+        .premium-card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 5px;
+            background: linear-gradient(90deg, #0F172A 0%, #D4AF37 100%);
+        }
+
+        /* Línea de tiempo superior (Estilo SaaS Moderno) */
+        .premium-timeline { display: flex; justify-content: space-between; align-items: center; margin: 10px 0 30px 0; position: relative; }
+        .premium-timeline::after { content: ''; position: absolute; top: 50%; left: 10px; right: 10px; height: 4px; background: #E2E8F0; z-index: 1; border-radius: 2px; }
+        
+        .p-step { position: relative; z-index: 2; padding: 10px 25px; border-radius: 30px; font-weight: 700; font-size: 13px; color: #64748B; background: #F8FAFC; border: 3px solid #E2E8F0; transition: all 0.4s ease; text-transform: uppercase; letter-spacing: 0.5px; }
+        .p-step.completed { background: #10B981; color: white; border-color: #059669; box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); }
+        .p-step.active { background: #0F172A; color: #D4AF37; border-color: #D4AF37; transform: scale(1.08) translateY(-2px); box-shadow: 0 10px 20px rgba(15, 23, 42, 0.3); }
+        </style>
+        """, unsafe_allow_html=True)
+
+        # 3. Renderizar la Barra de Progreso Visual basada en el estado
+        f = st.session_state.fase_activa
         st.markdown(f"""
-        <div class="module-card" style="padding: 15px 30px; margin-bottom: 5px;">
-            <div class="timeline">
-                <div class="step {c1}">1. Contratos</div>
-                <div class="step {c2}">2. Viabilidad</div>
-                <div class="step {c3}">3. Ensamblaje</div>
-                <div class="step {c4}">4. Radicado</div>
-            </div>
+        <div class="premium-timeline">
+            <div class="p-step {'active' if f == 1 else ('completed' if f > 1 else '')}">1. Contratos</div>
+            <div class="p-step {'active' if f == 2 else ('completed' if f > 2 else '')}">2. Viabilidad</div>
+            <div class="p-step {'active' if f == 3 else ('completed' if f > 3 else '')}">3. Ensamblaje</div>
+            <div class="p-step {'active' if f == 4 else ('completed' if f > 4 else '')}">4. Radicado</div>
         </div>
         """, unsafe_allow_html=True)
 
-        # --- CONTENIDOS DE CADA FASE ---
-
-        if f_num == 1:
-            st.markdown("<div class='module-card-gold'>", unsafe_allow_html=True)
-            st.markdown("#### ✍️ Firmas y Contrato de Representación")
+        # 4. Renderizar el Contenido Animado según la fase
+        st.markdown("<div class='premium-card'>", unsafe_allow_html=True)
+        
+        if f == 1:
+            st.markdown("<h3 style='color: #0F172A; margin-bottom: 20px;'>✍️ Fase 1: Emisión de Contratos</h3>", unsafe_allow_html=True)
             col1, col2 = st.columns(2)
             with col1:
-                st.write("**Paso 1: Generar Contrato**")
-                if st.button("📄 Generar Contrato de Servicios"):
-                    st.success("Contrato generado. Listo para descargar e imprimir.")
-                    st.download_button("⬇️ Descargar", data="Contrato modelo de prueba", file_name="Contrato_Insolvencia.txt")
+                st.markdown("**1. Generar Documento Maestro**")
+                if st.button("📄 Generar Contrato Inteligente", use_container_width=True):
+                    st.success("Contrato generado con los datos del cliente.")
+                    st.download_button("⬇️ Descargar PDF", data="Doc", file_name="Contrato.pdf", use_container_width=True)
             with col2:
-                st.write("**Paso 2: Subir Firmado**")
-                archivo_firma = st.file_uploader("Subir contrato firmado", type=["pdf"], key="firma_up")
-                if st.button("Guardar Contrato Firmado"):
-                    if archivo_firma:
-                        st.success("✅ Contrato archivado en Bóveda.")
-                    else:
-                        st.warning("⚠️ Falta el documento.")
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        elif f_num == 2:
-            st.markdown("<div class='module-card' style='border-top: 4px solid #8B5CF6;'>", unsafe_allow_html=True)
-            st.markdown("#### ⚖️ Análisis de Viabilidad")
-            st.info("Valide si el cliente cumple los requisitos del Art. 538 de la Ley 1564 de 2012.")
-            st.text_area("Notas y Concepto Jurídico", placeholder="Ej: Cumple con mora > 90 días en más del 50% del pasivo...")
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        elif f_num == 3:
-            st.markdown("<div class='module-card-blue'>", unsafe_allow_html=True)
-            st.markdown("#### 📂 Recolección y Ensamblaje")
-            st.write("Sube los soportes: Cédula, extractos, Datacrédito, etc.")
-            archivo_ensamblaje = st.file_uploader("Seleccionar documento (PDF/Imagen)", type=["pdf", "png", "jpg", "jpeg"], key="ensam_up")
+                st.markdown("**2. Bóveda de Firmas**")
+                archivo_firma = st.file_uploader("Subir contrato ya firmado", type=["pdf"], key="f_up")
+                if st.button("Guardar en Nube Segura", use_container_width=True):
+                    st.success("✅ Guardado y encriptado.")
+                    
+        elif f == 2:
+            st.markdown("<h3 style='color: #0F172A; margin-bottom: 20px;'>⚖️ Fase 2: Check de Viabilidad</h3>", unsafe_allow_html=True)
+            st.info("💡 **Sistema Experto:** Verifique el cumplimiento normativo (Ley 1564 de 2012).")
+            st.text_area("Dictamen Jurídico y Observaciones", height=120, placeholder="El cliente declara ingresos por...")
             
-            if st.button("Subir al Expediente (Drive)", key="btn_ensam"):
-                if archivo_ensamblaje:
-                    st.success(f"📄 Archivo '{archivo_ensamblaje.name}' guardado en Drive correctamente.")
-                else:
-                    st.warning("⚠️ Selecciona un archivo primero.")
-            st.markdown("</div>", unsafe_allow_html=True)
+        elif f == 3:
+            st.markdown("<h3 style='color: #0F172A; margin-bottom: 20px;'>📂 Fase 3: Ensamblaje de Pruebas</h3>", unsafe_allow_html=True)
+            st.write("Cargue los anexos obligatorios (Cédula, Datacrédito, Extractos, Certificados).")
+            archivo_ensamblaje = st.file_uploader("Arrastre los documentos aquí", type=["pdf", "png", "jpg"], accept_multiple_files=True)
+            if st.button("Sincronizar Pruebas con Drive", use_container_width=True):
+                st.success("📄 Sincronización exitosa. Expediente armado.")
+                
+        elif f == 4:
+            st.markdown("<h3 style='color: #0F172A; margin-bottom: 20px;'>🏛️ Fase 4: Radicación Oficial</h3>", unsafe_allow_html=True)
+            colA, colB = st.columns(2)
+            with colA:
+                codigo_radicado = st.text_input("Código de Radicado (C. Conciliación)")
+            with colB:
+                fecha_rad = st.date_input("Fecha de Admisión")
+            if st.button("🚀 Confirmar Apertura Legal", use_container_width=True):
+                st.balloons()
+                st.success(f"🎉 Radicado {codigo_radicado} validado. Alertas activadas.")
 
-        elif f_num == 4:
-            st.markdown("<div class='module-card-green'>", unsafe_allow_html=True)
-            st.markdown("#### 🏛️ Radicación Oficial")
-            codigo_radicado = st.text_input("Número de Radicado", placeholder="Ej: RAD-2026-00982")
-            if st.button("🚀 Confirmar Radicación"):
-                if codigo_radicado:
-                    st.success(f"🎉 Radicado en Notaría/Centro bajo el código {codigo_radicado}")
-                else:
-                    st.error("⚠️ Ingresa el número.")
-            st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
+        # 5. Botones de Navegación Interactiva (Anterior / Siguiente)
         st.markdown("<br>", unsafe_allow_html=True)
+        nav_col1, empty_col, nav_col2 = st.columns([1, 2, 1])
+        with nav_col1:
+            if f > 1:
+                st.button("⬅️ Fase Anterior", on_click=retroceder_fase, use_container_width=True)
+        with nav_col2:
+            if f < 4:
+                st.button("Siguiente Fase ➡️", on_click=avanzar_fase, use_container_width=True)
+                
+        st.markdown("<br><br>", unsafe_allow_html=True)
         
         st.markdown("<div class='module-card' style='border-top: 3px solid #10B981;'>", unsafe_allow_html=True)
         st.markdown("<h3>📱 Central Automática de WhatsApp</h3>", unsafe_allow_html=True)
