@@ -7,3 +7,4 @@ oauth2client
 google-auth
 google-api-python-client
 requests
+cloudscraper
