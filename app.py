@@ -1189,10 +1189,10 @@ elif st.session_state.pagina_actual == 'Acreedores':
         st.markdown("</div>", unsafe_allow_html=True)
 
 
-    # ==========================================
+# ==========================================
     # PÁGINA: RASTREADOR JUDICIAL (OSINT LEGAL)
     # ==========================================
-    elif st.session_state.pagina_actual == 'Rastreador':
+elif st.session_state.pagina_actual == 'Rastreador':
         st.markdown("<h2 style='color: #0F172A;'>🔍 Rastreador Judicial & Intel Patrimonial</h2>", unsafe_allow_html=True)
         st.markdown("---")
         
