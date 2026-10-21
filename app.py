@@ -1225,8 +1225,11 @@ elif st.session_state.pagina_actual == 'Rastreador':
                     elif df_procesos == "TIMEOUT":
                         st.warning("⏱️ Los servidores del Estado están congestionados y no responden. Intente de nuevo o use el enlace manual abajo.")
                         
+                    elif isinstance(df_procesos, str) and df_procesos.startswith("ERROR"):
+                        st.error(f"🛑 El servidor del Estado bloqueó nuestra conexión. Detalle técnico: {df_procesos}")
                     else:
-                        st.warning("⚠️ Error de conexión con la Rama Judicial. Verifique la plataforma manualmente.")
+                        st.warning(f"⚠️ Error de conexión con la Rama Judicial. Código interno: {df_procesos}")
+
 
         # ENLACES DIRECTOS A PLATAFORMAS EXTERNAS
         st.markdown("<br>### 🌐 Plataformas Externas de Verificación Inmediata", unsafe_allow_html=True)
