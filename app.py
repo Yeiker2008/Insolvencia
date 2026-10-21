@@ -1224,7 +1224,7 @@ elif st.session_state.pagina_actual == 'Rastreador':
             btn_buscar = st.button("🚀 Iniciar Escaneo OSINT", use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-            if btn_buscar:
+        if btn_buscar:
             # 1. Validación de seguridad
             if not cedula_rastreo.strip():
                 st.error("⚠️ Ingrese un número de cédula válido.")
