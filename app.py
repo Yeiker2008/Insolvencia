@@ -11,52 +11,69 @@ from datetime import datetime, timedelta
 import time
 import requests
 import json
+import cloudscraper
 
 # ==========================================
-# MOTOR OSINT: RASTREADOR DE LA RAMA JUDICIAL
+# MOTOR OSINT: BYPASS DE LA RAMA JUDICIAL
 # ==========================================
-@st.cache_data(ttl=3600, show_spinner=False)  # Guarda la búsqueda por 1 hora en caché para ahorrar memoria
+@st.cache_data(ttl=3600, show_spinner=False)
 def consultar_rama_judicial(cedula: str):
     url = "https://consultaprocesos.ramajudicial.gov.co/api/v1/Procesos/Consulta/PorTipoNumeroIdentificacion"
     params = {
-        "tipoPersona": 1, # Persona Natural
+        "tipoPersona": 1, 
         "numeroIdentificacion": str(cedula).strip(),
         "SoloActivos": "false"
     }
+    
+    # Huella digital falsificada: Simulamos ser Google Chrome en un Windows real
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-        "Accept": "application/json"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "es-CO,es-419;q=0.9,es;q=0.8",
+        "Origin": "https://consultaprocesos.ramajudicial.gov.co",
+        "Referer": "https://consultaprocesos.ramajudicial.gov.co/Procesos/NumeroDocumento",
+        "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin"
     }
     
     try:
-        # Timeout de 15 segundos: si la Rama Judicial se cae, nuestra app NO se congela
-        response = requests.get(url, params=params, headers=headers, timeout=15)
-        response.raise_for_status() # Detecta errores 404, 500 automáticamente
+        # Creamos el Scraper para evadir el Firewall (Cloudflare/Imperva)
+        scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True})
         
-        data = response.json()
-        procesos = data.get("procesos", [])
+        response = scraper.get(url, params=params, headers=headers, timeout=20)
         
-        if not procesos:
-            return pd.DataFrame() # Retorna DataFrame vacío si está limpio
+        # Si el servidor nos responde bien, procesamos el JSON
+        if response.status_code == 200:
+            try:
+                data = response.json()
+            except:
+                return "WAF_BLOCK" # Detecta si nos mandaron un HTML de bloqueo en vez de datos
+                
+            procesos = data.get("procesos", [])
+            if not procesos:
+                return pd.DataFrame() # Vacío pero exitoso
+                
+            lista_procesos = []
+            for p in procesos:
+                lista_procesos.append({
+                    "Radicado": p.get("idProceso", "N/A"),
+                    "Juzgado": p.get("despacho", "N/A"),
+                    "Demandante": p.get("sujetosProcesales", "N/A"),
+                    "Proceso": p.get("claseProceso", "N/A"),
+                    "Fecha": p.get("fechaUltimaActuacion", "")[:10]
+                })
+            return pd.DataFrame(lista_procesos)
+        else:
+            return f"ERROR_HTTP_{response.status_code}"
             
-        lista_procesos = []
-        for p in procesos:
-            lista_procesos.append({
-                "Radicado": p.get("idProceso", "N/A"),
-                "Juzgado / Despacho": p.get("despacho", "N/A"),
-                "Demandante / Sujetos": p.get("sujetosProcesales", "N/A"),
-                "Clase de Proceso": p.get("claseProceso", "N/A"),
-                "Última Actuación": p.get("fechaUltimaActuacion", "")[:10]
-            })
-        return pd.DataFrame(lista_procesos)
-        
-    except requests.exceptions.Timeout:
-        # Manejo de error limpio sin usar "pass"
-        print(f"⚠️ [LOG SISTEMA]: Timeout consultando CC {cedula} en Rama Judicial.")
-        return "TIMEOUT"
     except Exception as e:
-        print(f"⚠️ [LOG SISTEMA]: Error API Rama Judicial -> {e}")
-        return None
+        print(f"⚠️ Error Bypass: {e}")
+        return "TIMEOUT"
+                                   
         
 
 try:
@@ -1207,28 +1224,31 @@ elif st.session_state.pagina_actual == 'Rastreador':
             btn_buscar = st.button("🚀 Iniciar Escaneo OSINT", use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-        if btn_buscar:
+            if btn_buscar:
+            # 1. Validación de seguridad
             if not cedula_rastreo.strip():
                 st.error("⚠️ Ingrese un número de cédula válido.")
             else:
-                with st.spinner("Interceptando servidores de la Rama Judicial..."):
+                # 2. Rueda de carga mientras el robot trabaja
+                with st.spinner("Ejecutando extracción en los servidores de la Rama Judicial..."):
+                    
+                    # 3. Llamada al motor que construimos en el Paso 2
                     df_procesos = consultar_rama_judicial(cedula_rastreo)
                     
+                    # 4. CASO A: Encontró procesos (La tabla tiene datos)
                     if isinstance(df_procesos, pd.DataFrame) and not df_procesos.empty:
-                        st.error(f"🚨 ¡ALERTA! Se encontraron **{len(df_procesos)} procesos judiciales** asociados a la cédula {cedula_rastreo}.")
+                        st.error(f"🚨 ¡ALERTA! **{len(df_procesos)} procesos** encontrados para la CC {cedula_rastreo}.")
                         st.dataframe(df_procesos, use_container_width=True, hide_index=True)
-                        st.success("✅ **Siguiente paso:** Preparar oficios de suspensión de embargo (Art. 545 CGP) para los despachos listados.")
+                        st.success("✅ Datos extraídos automáticamente. Proceda con los oficios.")
                         
+                    # 5. CASO B: Está limpio (La tabla está vacía)
                     elif isinstance(df_procesos, pd.DataFrame) and df_procesos.empty:
-                        st.success(f"✅ **Limpio:** No se encontraron procesos judiciales registrados bajo la cédula {cedula_rastreo}.")
+                        st.success(f"✅ **Limpio:** Ningún proceso encontrado para la CC {cedula_rastreo}.")
                         
-                    elif df_procesos == "TIMEOUT":
-                        st.warning("⏱️ Los servidores del Estado están congestionados y no responden. Intente de nuevo o use el enlace manual abajo.")
+                    # 6. CASO C: El escudo del Estado nos bloqueó la conexión
+                    elif df_procesos in ["WAF_BLOCK", "TIMEOUT"] or str(df_procesos).startswith("ERROR"):
+                        st.error("🛑 Error de conexión con el Servidor del Estado. El escudo de la Rama Judicial bloqueó la petición. Inténtelo más tarde o use los enlaces inferiores.")
                         
-                    elif isinstance(df_procesos, str) and df_procesos.startswith("ERROR"):
-                        st.error(f"🛑 El servidor del Estado bloqueó nuestra conexión. Detalle técnico: {df_procesos}")
-                    else:
-                        st.warning(f"⚠️ Error de conexión con la Rama Judicial. Código interno: {df_procesos}")
 
 
         # ENLACES DIRECTOS A PLATAFORMAS EXTERNAS
