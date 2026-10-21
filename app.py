@@ -12,6 +12,53 @@ import time
 import requests
 import json
 
+# ==========================================
+# MOTOR OSINT: RASTREADOR DE LA RAMA JUDICIAL
+# ==========================================
+@st.cache_data(ttl=3600, show_spinner=False)  # Guarda la búsqueda por 1 hora en caché para ahorrar memoria
+def consultar_rama_judicial(cedula: str):
+    url = "https://consultaprocesos.ramajudicial.gov.co/api/v1/Procesos/Consulta/PorTipoNumeroIdentificacion"
+    params = {
+        "tipoPersona": 1, # Persona Natural
+        "numeroIdentificacion": str(cedula).strip(),
+        "SoloActivos": "false"
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Accept": "application/json"
+    }
+    
+    try:
+        # Timeout de 15 segundos: si la Rama Judicial se cae, nuestra app NO se congela
+        response = requests.get(url, params=params, headers=headers, timeout=15)
+        response.raise_for_status() # Detecta errores 404, 500 automáticamente
+        
+        data = response.json()
+        procesos = data.get("procesos", [])
+        
+        if not procesos:
+            return pd.DataFrame() # Retorna DataFrame vacío si está limpio
+            
+        lista_procesos = []
+        for p in procesos:
+            lista_procesos.append({
+                "Radicado": p.get("idProceso", "N/A"),
+                "Juzgado / Despacho": p.get("despacho", "N/A"),
+                "Demandante / Sujetos": p.get("sujetosProcesales", "N/A"),
+                "Clase de Proceso": p.get("claseProceso", "N/A"),
+                "Última Actuación": p.get("fechaUltimaActuacion", "")[:10]
+            })
+        return pd.DataFrame(lista_procesos)
+        
+    except requests.exceptions.Timeout:
+        # Manejo de error limpio sin usar "pass"
+        print(f"⚠️ [LOG SISTEMA]: Timeout consultando CC {cedula} en Rama Judicial.")
+        return "TIMEOUT"
+    except Exception as e:
+        print(f"⚠️ [LOG SISTEMA]: Error API Rama Judicial -> {e}")
+        return None
+        
+
 try:
     from fpdf import FPDF
 except ImportError:
@@ -571,6 +618,12 @@ with st.sidebar:
     if st.button("📂 Seguimiento Procesal", key="b_act"): cambiar_pagina("Actuaciones")
     if st.button("🚦 Control Vencimientos", key="b_ven"): cambiar_pagina("Vencimientos")
     if st.button("🤖 Dependiente Virtual", key="b_mem"): cambiar_pagina("Memoriales")
+
+            # Agrega este botón en tu sidebar
+    if st.button("🔍 Rastreador Judicial", use_container_width=True):
+       st.session_state.pagina_actual = 'Rastreador'
+       st.rerun()
+            
     
     st.markdown("<br><p style='color:#71717A; font-size:11px; font-weight:bold; letter-spacing:1px;'>💰 FINANZAS & ADMIN</p>", unsafe_allow_html=True)
     if st.button("📋 Pasivos y Acreedores", key="b_acr"): cambiar_pagina("Acreedores")
@@ -1134,6 +1187,61 @@ elif st.session_state.pagina_actual == 'Acreedores':
                 n_ac = pd.DataFrame([{"ID_Acr": f"ACR-{hoy.strftime('%H%M%S')}", "Cedula": str(cc_a), "Acreedor": nom_acr, "Cuantia": str(cuantia_acr), "Clase": clase_acr}])
                 guardar_tabla(pd.concat([df_acr, n_ac], ignore_index=True), "acreedores"); st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
+
+
+    # ==========================================
+    # PÁGINA: RASTREADOR JUDICIAL (OSINT LEGAL)
+    # ==========================================
+    elif st.session_state.pagina_actual == 'Rastreador':
+        st.markdown("<h2 style='color: #0F172A;'>🔍 Rastreador Judicial & Intel Patrimonial</h2>", unsafe_allow_html=True)
+        st.markdown("---")
+        
+        st.info("💡 **Módulo de Inteligencia:** Conecta en tiempo real con las bases de datos públicas para detectar embargos, multas y procesos ejecutivos antes de radicar la solicitud de insolvencia.")
+        
+        st.markdown("<div class='module-card'>", unsafe_allow_html=True)
+        col_input, col_btn = st.columns([3, 1])
+        with col_input:
+            cedula_rastreo = st.text_input("Número de Cédula a investigar", placeholder="Ej: 1125184282")
+        with col_btn:
+            st.markdown("<br>", unsafe_allow_html=True)
+            btn_buscar = st.button("🚀 Iniciar Escaneo OSINT", use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        if btn_buscar:
+            if not cedula_rastreo.strip():
+                st.error("⚠️ Ingrese un número de cédula válido.")
+            else:
+                with st.spinner("Interceptando servidores de la Rama Judicial..."):
+                    df_procesos = consultar_rama_judicial(cedula_rastreo)
+                    
+                    if isinstance(df_procesos, pd.DataFrame) and not df_procesos.empty:
+                        st.error(f"🚨 ¡ALERTA! Se encontraron **{len(df_procesos)} procesos judiciales** asociados a la cédula {cedula_rastreo}.")
+                        st.dataframe(df_procesos, use_container_width=True, hide_index=True)
+                        st.success("✅ **Siguiente paso:** Preparar oficios de suspensión de embargo (Art. 545 CGP) para los despachos listados.")
+                        
+                    elif isinstance(df_procesos, pd.DataFrame) and df_procesos.empty:
+                        st.success(f"✅ **Limpio:** No se encontraron procesos judiciales registrados bajo la cédula {cedula_rastreo}.")
+                        
+                    elif df_procesos == "TIMEOUT":
+                        st.warning("⏱️ Los servidores del Estado están congestionados y no responden. Intente de nuevo o use el enlace manual abajo.")
+                        
+                    else:
+                        st.warning("⚠️ Error de conexión con la Rama Judicial. Verifique la plataforma manualmente.")
+
+        # ENLACES DIRECTOS A PLATAFORMAS EXTERNAS
+        st.markdown("<br>### 🌐 Plataformas Externas de Verificación Inmediata", unsafe_allow_html=True)
+        st.write("Acceda a los portales oficiales con un clic:")
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.link_button("⚖️ Rama Judicial (Procesos)", "https://consultaprocesos.ramajudicial.gov.co/", use_container_width=True)
+        with c2:
+            st.link_button("🏛️ RUES (Comerciantes)", "https://www.rues.org.co/", use_container_width=True)
+        with c3:
+            st.link_button("🚗 SIMIT (Multas/Tránsito)", "https://www.fcm.org.co/simit/", use_container_width=True)
+        with c4:
+            st.link_button("📋 Procuraduría (Antecedentes)", "https://www.procuraduria.gov.co/Pages/Generacion-de-Antecedentes.aspx", use_container_width=True)
+            
 
 # --- 7. TAREAS ---
 elif st.session_state.pagina_actual == 'Tareas':
