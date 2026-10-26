@@ -1103,7 +1103,7 @@ elif st.session_state.pagina_actual == 'Contratos':
             link_wa = f"https://wa.me/57{tel_c.replace(' ', '')}?text={msg_texto.replace(' ', '%20')}"
             st.markdown(f"<a href='{link_wa}' target='_blank'><button style='background:#10B981; color:white; border:none; padding:10px 20px; border-radius:6px; font-weight:bold; cursor:pointer; width:100%; margin-bottom: 15px;'>🚀 ENVIAR WHATSAPP DIRECTO AL CLIENTE</button></a>", unsafe_allow_html=True)
         else: st.warning("⚠ No hay celular registrado en la bóveda de este cliente.")
-                    email_cli = str(data_c.get("Email", "")).strip()
+        email_cli = str(data_c.get("Email", "")).strip()
         if email_cli and email_cli.lower() != "nan":
             if st.button("📧 ENVIAR ESTE MENSAJE POR GMAIL AL CLIENTE", key=f"btn_mail_cli_{cc_s}", use_container_width=True):
                 cuerpo_html = f"<p>{escape(msg_texto).replace(chr(10), '<br>')}</p><hr><small>Mensaje enviado por su firma jurídica.</small>"
