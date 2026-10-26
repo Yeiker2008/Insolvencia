@@ -12,10 +12,66 @@ import time
 import requests
 import json
 import cloudscraper
+import smtplib
+import ssl
+import requests
+import streamlit as st
+from email.message import EmailMessage
+
+
+def enviar_email(destinatario, asunto, cuerpo_html, cuerpo_texto=""):
+    """Envía un correo por Gmail SMTP. Devuelve (ok, mensaje)."""
+    try:
+        remitente = st.secrets["gmail_usuario"]
+        clave = st.secrets["gmail_app_password"]
+        nombre = st.secrets.get("gmail_nombre_remitente", "Insolvencia OS")
+        if not destinatario:
+            return False, "No hay correo de destino."
+
+        msg = EmailMessage()
+        msg["Subject"] = asunto
+        msg["From"] = f"{nombre} <{remitente}>"
+        msg["To"] = destinatario
+        msg.set_content(cuerpo_texto or "Este mensaje requiere un lector de correo con soporte HTML.")
+        msg.add_alternative(cuerpo_html, subtype="html")
+
+        contexto = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=contexto, timeout=20) as servidor:
+            servidor.login(remitente, clave)
+            servidor.send_message(msg)
+        return True, "Correo enviado."
+    except KeyError as e:
+        return False, f"Falta el secreto {e} en Streamlit Secrets."
+    except smtplib.SMTPAuthenticationError:
+        return False, "Gmail rechazó la contraseña de aplicación."
+    except Exception as e:
+        print(f"⚠️ Error enviando correo: {type(e).__name__}")
+        return False, f"No se pudo enviar el correo ({type(e).__name__})."
+
+
+def enviar_telegram(texto, chat_id=None):
+    """Envía un mensaje por Telegram. Devuelve (ok, mensaje)."""
+    try:
+        token = st.secrets["telegram_bot_token"]
+        destino = chat_id or st.secrets["telegram_chat_id"]
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": destino, "text": texto},
+            timeout=15
+        )
+        if r.status_code == 200:
+            return True, "Telegram enviado."
+        return False, f"Telegram respondió con error {r.status_code}."
+    except KeyError as e:
+        return False, f"Falta el secreto {e} en Streamlit Secrets."
+    except requests.RequestException as e:
+        print(f"⚠️ Error de red con Telegram: {type(e).__name__}")
+        return False, "No se pudo conectar con Telegram."
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from html import escape
+from notificaciones import enviar_email, enviar_telegram
 
 st.set_page_config(page_title="Insolvencia OS | Enterprise", page_icon="⚖", layout="wide", initial_sidebar_state="expanded")
 
@@ -1047,6 +1103,18 @@ elif st.session_state.pagina_actual == 'Contratos':
             link_wa = f"https://wa.me/57{tel_c.replace(' ', '')}?text={msg_texto.replace(' ', '%20')}"
             st.markdown(f"<a href='{link_wa}' target='_blank'><button style='background:#10B981; color:white; border:none; padding:10px 20px; border-radius:6px; font-weight:bold; cursor:pointer; width:100%; margin-bottom: 15px;'>🚀 ENVIAR WHATSAPP DIRECTO AL CLIENTE</button></a>", unsafe_allow_html=True)
         else: st.warning("⚠ No hay celular registrado en la bóveda de este cliente.")
+                    email_cli = str(data_c.get("Email", "")).strip()
+        if email_cli and email_cli.lower() != "nan":
+            if st.button("📧 ENVIAR ESTE MENSAJE POR GMAIL AL CLIENTE", key=f"btn_mail_cli_{cc_s}", use_container_width=True):
+                cuerpo_html = f"<p>{escape(msg_texto).replace(chr(10), '<br>')}</p><hr><small>Mensaje enviado por su firma jurídica.</small>"
+                ok_c, msg_c = enviar_email(email_cli, f"Información sobre su proceso - {tipo_msg[4:]}", cuerpo_html, msg_texto)
+                if ok_c:
+                    registrar_log("COMUNICACIONES", f"Correo enviado a cliente {cc_s}: {tipo_msg}")
+                    st.success("📧 Correo enviado al cliente.")
+                else:
+                    st.error(f"📧 {msg_c}")
+        else:
+            st.info("ℹ️ Este cliente no tiene correo registrado.")
         st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
@@ -1180,6 +1248,46 @@ elif st.session_state.pagina_actual == 'Vencimientos':
                 n_v = pd.DataFrame([{"ID_Ven": f"VEN-{hoy.strftime('%H%M%S')}", "Cedula": str(cc_v), "Cliente": nom_v, "Asunto": asunto, "Fecha_Limite": str(fecha_v), "Estado": "Activo"}])
                 guardar_tabla(pd.concat([df_ven, n_v], ignore_index=True), "vencimientos"); st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
+
+        if st.button("📣 Enviar alertas de vencimientos próximos", key="btn_alertas_ven"):
+        urgentes = []
+        if not df_ven.empty:
+            for _, rv in df_ven[df_ven["Estado"] == "Activo"].iterrows():
+                try:
+                    dias = (datetime.strptime(str(rv["Fecha_Limite"])[:10], "%Y-%m-%d").date() - hoy.date()).days
+                    if dias <= 5:
+                        urgentes.append((dias, str(rv["Cliente"]), str(rv["Asunto"]), str(rv["Fecha_Limite"])[:10]))
+                except ValueError as e:
+                    print(f"⚠️ Fecha inválida en vencimiento: {e}")
+        urgentes.sort(key=lambda x: x[0])
+
+        if urgentes:
+            lineas = []
+            for dias, cli, asu, fec in urgentes:
+                if dias < 0:
+                    estado = f"VENCIDO hace {abs(dias)} día(s)"
+                else:
+                    estado = f"vence en {dias} día(s)"
+                lineas.append(f"• {cli} - {asu} ({estado}, límite {fec})")
+            cuerpo = "\n".join(lineas)
+        else:
+            cuerpo = "Sin vencimientos en los próximos 5 días. (Mensaje de prueba del sistema)"
+
+        texto_alerta = f"⚖️ Alertas Insolvencia OS\n\n{cuerpo}"
+        html_alerta = "<h3>⚖️ Alertas Insolvencia OS</h3><p>" + escape(cuerpo).replace("\n", "<br>") + "</p>"
+        destino_mail = st.secrets.get("alertas_email_destino", st.secrets.get("gmail_usuario", ""))
+
+        ok_mail, msg_mail = enviar_email(destino_mail, "⚖️ Alertas de vencimientos", html_alerta, texto_alerta)
+        ok_tg, msg_tg = enviar_telegram(texto_alerta)
+
+        if ok_mail:
+            st.success(f"📧 {msg_mail}")
+        else:
+            st.warning(f"📧 {msg_mail}")
+        if ok_tg:
+            st.success(f"✈️ {msg_tg}")
+        else:
+            st.info(f"✈️ {msg_tg}")
 
     if not df_ven.empty:
         for _, rv in df_ven[df_ven["Estado"] == "Activo"].iloc[::-1].iterrows():
