@@ -71,7 +71,7 @@ def enviar_telegram(texto, chat_id=None):
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from html import escape
-from notificaciones import enviar_email, enviar_telegram, enviar_alertas_vencimientos
+from notificaciones import enviar_email, enviar_telegram, enviar_alertas_vencimientos, notificar_nuevo_vencimiento
 
 st.set_page_config(page_title="Insolvencia OS | Enterprise", page_icon="⚖", layout="wide", initial_sidebar_state="expanded")
 
@@ -1248,6 +1248,7 @@ elif st.session_state.pagina_actual == 'Vencimientos':
                 cc_v, nom_v = cl_v.split(" - ", 1)
                 n_v = pd.DataFrame([{"ID_Ven": f"VEN-{uuid.uuid4().hex[:8]}", "Cedula": str(cc_v), "Cliente": nom_v, "Asunto": asunto, "Fecha_Limite": str(fecha_v), "Estado": "Activo"}])
                 guardar_tabla(pd.concat([df_ven, n_v], ignore_index=True), "vencimientos")
+                notificar_nuevo_vencimiento(nom_v, asunto, fecha_v)
                 st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
