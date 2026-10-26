@@ -71,7 +71,7 @@ def enviar_telegram(texto, chat_id=None):
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from html import escape
-from notificaciones import enviar_email, enviar_telegram
+from notificaciones import enviar_email, enviar_telegram, enviar_alertas_vencimientos
 
 st.set_page_config(page_title="Insolvencia OS | Enterprise", page_icon="⚖", layout="wide", initial_sidebar_state="expanded")
 
@@ -1241,28 +1241,46 @@ elif st.session_state.pagina_actual == 'Vencimientos':
         with c1:
             cl_v = st.selectbox("Seleccionar Cliente", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"] if not df_activos.empty else ["Sin Clientes"])
             asunto = st.text_input("Asunto Legal")
-        with c2: fecha_v = st.date_input("Fecha Límite Exacta")
+        with c2:
+            fecha_v = st.date_input("Fecha Límite Exacta")
         if st.form_submit_button("PROGRAMAR ALERTA"):
             if not df_activos.empty and cl_v != "Sin Clientes":
-                cc_v, nom_v = cl_v.split(" - ")[0], cl_v.split(" - ")[1]
-                n_v = pd.DataFrame([{"ID_Ven": f"VEN-{hoy.strftime('%H%M%S')}", "Cedula": str(cc_v), "Cliente": nom_v, "Asunto": asunto, "Fecha_Limite": str(fecha_v), "Estado": "Activo"}])
-                guardar_tabla(pd.concat([df_ven, n_v], ignore_index=True), "vencimientos"); st.rerun()
+                cc_v, nom_v = cl_v.split(" - ", 1)
+                n_v = pd.DataFrame([{"ID_Ven": f"VEN-{uuid.uuid4().hex[:8]}", "Cedula": str(cc_v), "Cliente": nom_v, "Asunto": asunto, "Fecha_Limite": str(fecha_v), "Estado": "Activo"}])
+                guardar_tabla(pd.concat([df_ven, n_v], ignore_index=True), "vencimientos")
+                st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown("</div>", unsafe_allow_html=True)
-
-    
+    if st.button("📣 Enviar alertas de vencimientos próximos", key="btn_alertas_ven"):
+        ok_mail, msg_mail, ok_tg, msg_tg = enviar_alertas_vencimientos(df_ven, hoy)
+        if ok_mail:
+            st.success(f"📧 {msg_mail}")
+        else:
+            st.warning(f"📧 {msg_mail}")
+        if ok_tg:
+            st.success(f"✈️ {msg_tg}")
+        else:
+            st.info(f"✈️ {msg_tg}")
 
     if not df_ven.empty:
         for _, rv in df_ven[df_ven["Estado"] == "Activo"].iloc[::-1].iterrows():
             try:
                 dias = (datetime.strptime(str(rv["Fecha_Limite"])[:10], "%Y-%m-%d").date() - hoy.date()).days
-                if dias < 0: cb = "#71717A"; est = f"VENCIDO HACE {abs(dias)} DÍAS"
-                elif dias <= 2: cb = "#EF4444"; est = f"¡PELIGRO! VENCE EN {dias} DÍAS"
-                elif dias <= 5: cb = "#F59E0B"; est = f"ATENCIÓN: Faltan {dias} días"
-                else: cb = "#10B981"; est = f"En término ({dias} días)"
-                st.markdown(f"<div style='border-left: 5px solid {cb}; padding: 12px; background:#121214; margin-bottom:8px; border-radius:6px;'><b>{rv['Cliente']}</b> - {rv['Asunto']}<br>{est} (Límite: {rv['Fecha_Limite']})</div>", unsafe_allow_html=True)
-            except: pass
+                if dias < 0:
+                    cb = "#71717A"
+                    est = f"VENCIDO HACE {abs(dias)} DÍAS"
+                elif dias <= 2:
+                    cb = "#EF4444"
+                    est = f"¡PELIGRO! VENCE EN {dias} DÍAS"
+                elif dias <= 5:
+                    cb = "#F59E0B"
+                    est = f"ATENCIÓN: Faltan {dias} días"
+                else:
+                    cb = "#10B981"
+                    est = f"En término ({dias} días)"
+                st.markdown(f"<div style='border-left: 5px solid {cb}; padding: 12px; background:#FFFFFF; color:#1E293B; margin-bottom:8px; border-radius:6px;'><b>{rv['Cliente']}</b> - {rv['Asunto']}<br>{est} (Límite: {rv['Fecha_Limite']})</div>", unsafe_allow_html=True)
+            except ValueError as e:
+                print(f"⚠️ Fecha inválida en vencimiento: {e}")
 
 # --- 6. ACREEDORES ---
 elif st.session_state.pagina_actual == 'Acreedores':
@@ -1273,7 +1291,7 @@ elif st.session_state.pagina_actual == 'Acreedores':
             cl_a = st.selectbox("Expediente de Insolvencia", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"])
             c1, c2, c3 = st.columns(3)
             with c1: nom_acr = st.text_input("Acreedor")
-            with c2: cuantia_acr = st.number_input("Cuantía (\$)", min_value=0, step=100000)
+            with c2: cuantia_acr = st.number_input("Cuantía ($)", min_value=0, step=100000)
             with c3: clase_acr = st.selectbox("Clase", ["Primera", "Segunda", "Tercera", "Cuarta", "Quinta"])
             if st.form_submit_button("AGREGAR PASIVO"):
                 cc_a = cl_a.split(" - ")[0]
@@ -1444,24 +1462,24 @@ elif st.session_state.pagina_actual == 'Finanzas':
             pdf.set_font("Helvetica", '', 11)
             pdf.cell(95, 8, txt=cln("Valor Total de Honorarios (Contrato):"), border=1)
             pdf.set_font("Helvetica", 'B', 11)
-            pdf.cell(95, 8, txt=cln(f"\$ {total:,.0f}"), border=1, ln=True, align='R')
+            pdf.cell(95, 8, txt=cln(f"$ {total:,.0f}"), border=1, ln=True, align='R')
             
             pdf.set_font("Helvetica", '', 11)
             pdf.cell(95, 8, txt=cln("Saldo Pendiente Anterior:"), border=1)
             pdf.set_font("Helvetica", 'B', 11)
-            pdf.cell(95, 8, txt=cln(f"\$ {(saldo + abono):,.0f}"), border=1, ln=True, align='R')
+            pdf.cell(95, 8, txt=cln(f"$ {(saldo + abono):,.0f}"), border=1, ln=True, align='R')
             
             pdf.set_fill_color(212, 175, 55)
             pdf.set_text_color(255, 255, 255)
             pdf.set_font("Helvetica", 'B', 12)
             pdf.cell(95, 10, txt=cln("VALOR ABONADO (ESTE RECIBO):"), border=1, fill=True)
-            pdf.cell(95, 10, txt=cln(f"\$ {abono:,.0f}"), border=1, ln=True, align='R', fill=True)
+            pdf.cell(95, 10, txt=cln(f"$ {abono:,.0f}"), border=1, ln=True, align='R', fill=True)
             
             pdf.set_text_color(0, 0, 0)
             pdf.set_font("Helvetica", '', 11)
             pdf.cell(95, 8, txt=cln("NUEVO SALDO PENDIENTE:"), border=1)
             pdf.set_font("Helvetica", 'B', 11)
-            pdf.cell(95, 8, txt=cln(f"\$ {saldo:,.0f}"), border=1, ln=True, align='R')
+            pdf.cell(95, 8, txt=cln(f"$ {saldo:,.0f}"), border=1, ln=True, align='R')
             
             pdf.ln(20)
             
@@ -1494,10 +1512,10 @@ elif st.session_state.pagina_actual == 'Finanzas':
                 abo_t = limpiar_num(dat_f['Abonado'])
                 saldo_actual = hon_t - abo_t
                 
-                st.metric("Saldo Pendiente Actual", f"\$ {saldo_actual:,.0f}")
+                st.metric("Saldo Pendiente Actual", f"$ {saldo_actual:,.0f}")
                 
                 with st.form("abono"):
-                    n_abo = st.number_input("Registrar Abono Actual (\$)", min_value=0, step=50000)
+                    n_abo = st.number_input("Registrar Abono Actual ($)", min_value=0, step=50000)
                     if st.form_submit_button("ACTUALIZAR CONTABILIDAD Y GENERAR FACTURA"):
                         if n_abo > 0:
                             nuevo_abonado = abo_t + n_abo
@@ -1512,7 +1530,7 @@ elif st.session_state.pagina_actual == 'Finanzas':
                             pdf_path = generar_factura_pdf(nom_f, cc_f, hon_t, n_abo, nuevo_saldo, recibo_id)
                             st.session_state['ultimo_pdf_factura'] = pdf_path
                             
-                            msg_wa = f"⚖️ *FIRMA JURÍDICA - INSOLVENCIA OS* ⚖️%0A%0AEstimado/a *{nom_f}*, desde el departamento financiero confirmamos la recepción exitosa de su pago.%0A%0A💰 *Abono registrado:* \${n_abo:,.0f}%0A📉 *Nuevo saldo pendiente:* \${nuevo_saldo:,.0f}%0A%0ASu recibo de caja oficial No. {recibo_id} ha sido generado en nuestro sistema. %0A%0A¡Gracias por su cumplimiento y confianza en nuestro equipo!"
+                            msg_wa = f"⚖️ *FIRMA JURÍDICA - INSOLVENCIA OS* ⚖️%0A%0AEstimado/a *{nom_f}*, desde el departamento financiero confirmamos la recepción exitosa de su pago.%0A%0A💰 *Abono registrado:* ${n_abo:,.0f}%0A📉 *Nuevo saldo pendiente:* ${nuevo_saldo:,.0f}%0A%0ASu recibo de caja oficial No. {recibo_id} ha sido generado en nuestro sistema. %0A%0A¡Gracias por su cumplimiento y confianza en nuestro equipo!"
                             st.session_state['ultimo_wa_factura'] = f"https://wa.me/57{str(tel_f).replace(' ', '')}?text={msg_wa}"
                             
                             st.success("¡Pago registrado en la nube con éxito!")
