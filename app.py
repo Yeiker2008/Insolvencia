@@ -1249,7 +1249,9 @@ elif st.session_state.pagina_actual == 'Vencimientos':
                 guardar_tabla(pd.concat([df_ven, n_v], ignore_index=True), "vencimientos"); st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
-        if st.button("📣 Enviar alertas de vencimientos próximos", key="btn_alertas_ven"):
+            st.markdown("</div>", unsafe_allow_html=True)
+
+    if st.button("📣 Enviar alertas de vencimientos próximos", key="btn_alertas_ven"):
         urgentes = []
         if not df_ven.empty:
             for _, rv in df_ven[df_ven["Estado"] == "Activo"].iterrows():
