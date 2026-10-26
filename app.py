@@ -13,6 +13,12 @@ import requests
 import json
 import cloudscraper
 
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
+from html import escape
+
+st.set_page_config(page_title="Insolvencia OS | Enterprise", page_icon="⚖", layout="wide", initial_sidebar_state="expanded")
+
 # ==========================================
 # MOTOR OSINT: BYPASS DE LA RAMA JUDICIAL
 # ==========================================
@@ -116,10 +122,9 @@ CARPETA_PAPELERA_DRIVE_ID = "1MGBXOKbPuAE6xsf53AcCjwMFE_yzDbir"
 # GESTOR DE GOOGLE DRIVE VÍA API REST (CERO SEGMENTATION FAULT)
 # ==========================================
 
+@st.cache_data(ttl=3000, show_spinner=False)
 def obtener_token_fresco():
-    """Genera un token de acceso válido usando tu Refresh Token personal"""
-    from google.oauth2.credentials import Credentials
-    from google.auth.transport.requests import Request
+    """Token de Google reutilizado ~50 min en vez de pedir uno nuevo en cada llamada."""
     creds = Credentials.from_authorized_user_info({
         "client_id": st.secrets["google_client_id"],
         "client_secret": st.secrets["google_client_secret"],
@@ -301,7 +306,6 @@ gc_sheet = conectar_gsheets()
 # ==========================================
 # 1. CORE & CONFIGURACIÓN DE SESIÓN Y GSHEETS
 # ==========================================
-st.set_page_config(page_title="Insolvencia OS | Enterprise", page_icon="⚖", layout="wide", initial_sidebar_state="expanded")
 
 if 'autenticado' not in st.session_state: st.session_state.autenticado = False
 if 'usuario_actual' not in st.session_state: st.session_state.usuario_actual = ""
