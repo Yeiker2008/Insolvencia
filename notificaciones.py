@@ -91,3 +91,25 @@ def enviar_alertas_vencimientos(df_ven, hoy):
     ok_mail, msg_mail = enviar_email(destino, "⚖️ Alertas de vencimientos", html, texto)
     ok_tg, msg_tg = enviar_telegram(texto)
     return ok_mail, msg_mail, ok_tg, msg_tg
+
+
+def notificar_nuevo_vencimiento(cliente, asunto, fecha_limite):
+    """Avisa por correo y Telegram apenas se programa un vencimiento. Nunca rompe el guardado."""
+    try:
+        texto = (
+            "⚖️ Nuevo vencimiento programado\n\n"
+            f"Cliente: {cliente}\n"
+            f"Asunto: {asunto}\n"
+            f"Fecha límite: {fecha_limite}"
+        )
+        html = (
+            "<h3>⚖️ Nuevo vencimiento programado</h3><p>"
+            f"<b>Cliente:</b> {escape(str(cliente))}<br>"
+            f"<b>Asunto:</b> {escape(str(asunto))}<br>"
+            f"<b>Fecha límite:</b> {escape(str(fecha_limite))}</p>"
+        )
+        destino = st.secrets.get("alertas_email_destino", st.secrets.get("gmail_usuario", ""))
+        enviar_email(destino, "⚖️ Nuevo vencimiento programado", html, texto)
+        enviar_telegram(texto)
+    except Exception as e:
+        print(f"⚠️ No se pudo notificar el nuevo vencimiento: {type(e).__name__}")
