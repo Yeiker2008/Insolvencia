@@ -1,0 +1,30 @@
+name: Alertas diarias
+
+on:
+  schedule:
+    - cron: "0 12 * * *"   # 12:00 UTC = 7:00 a.m. hora de Colombia
+  workflow_dispatch:
+    inputs:
+      prueba:
+        description: "Enviar aunque no haya vencimientos"
+        default: "true"
+
+jobs:
+  alertas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install gspread requests
+      - run: python alertas_diarias.py
+        env:
+          PRUEBA: ${{ github.event.inputs.prueba || 'false' }}
+          GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          GMAIL_USUARIO: ${{ secrets.GMAIL_USUARIO }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          ALERTAS_EMAIL_DESTINO: ${{ secrets.ALERTAS_EMAIL_DESTINO }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
