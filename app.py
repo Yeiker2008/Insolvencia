@@ -1251,45 +1251,7 @@ elif st.session_state.pagina_actual == 'Vencimientos':
 
             st.markdown("</div>", unsafe_allow_html=True)
 
-    if st.button("📣 Enviar alertas de vencimientos próximos", key="btn_alertas_ven"):
-        urgentes = []
-        if not df_ven.empty:
-            for _, rv in df_ven[df_ven["Estado"] == "Activo"].iterrows():
-                try:
-                    dias = (datetime.strptime(str(rv["Fecha_Limite"])[:10], "%Y-%m-%d").date() - hoy.date()).days
-                    if dias <= 5:
-                        urgentes.append((dias, str(rv["Cliente"]), str(rv["Asunto"]), str(rv["Fecha_Limite"])[:10]))
-                except ValueError as e:
-                    print(f"⚠️ Fecha inválida en vencimiento: {e}")
-        urgentes.sort(key=lambda x: x[0])
-
-        if urgentes:
-            lineas = []
-            for dias, cli, asu, fec in urgentes:
-                if dias < 0:
-                    estado = f"VENCIDO hace {abs(dias)} día(s)"
-                else:
-                    estado = f"vence en {dias} día(s)"
-                lineas.append(f"• {cli} - {asu} ({estado}, límite {fec})")
-            cuerpo = "\n".join(lineas)
-        else:
-            cuerpo = "Sin vencimientos en los próximos 5 días. (Mensaje de prueba del sistema)"
-
-        texto_alerta = f"⚖️ Alertas Insolvencia OS\n\n{cuerpo}"
-        html_alerta = "<h3>⚖️ Alertas Insolvencia OS</h3><p>" + escape(cuerpo).replace("\n", "<br>") + "</p>"
-        destino_mail = st.secrets.get("alertas_email_destino", st.secrets.get("gmail_usuario", ""))
-
-        ok_mail, msg_mail = enviar_email(destino_mail, "⚖️ Alertas de vencimientos", html_alerta, texto_alerta)
-        ok_tg, msg_tg = enviar_telegram(texto_alerta)
-
-        if ok_mail:
-            st.success(f"📧 {msg_mail}")
-        else:
-            st.warning(f"📧 {msg_mail}")
-        if ok_tg:
-            st.success(f"✈️ {msg_tg}")
-        else:
-            st.info(f"✈️ {msg_tg}")
+    
 
     if not df_ven.empty:
         for _, rv in df_ven[df_ven["Estado"] == "Activo"].iloc[::-1].iterrows():
