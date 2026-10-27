@@ -178,6 +178,12 @@ CARPETA_PAPELERA_DRIVE_ID = "1MGBXOKbPuAE6xsf53AcCjwMFE_yzDbir"
 # GESTOR DE GOOGLE DRIVE VÍA API REST (CERO SEGMENTATION FAULT)
 # ==========================================
 
+@st.cache_resource
+def _almacen_cache():
+    """Caché compartida de la app: tablas, hojas, IDs de carpetas y listados de Drive."""
+    return {"tablas": {}, "hojas": {}, "carpetas": {}, "listados": {}}
+
+
 @st.cache_data(ttl=3000, show_spinner=False)
 def obtener_token_fresco():
     """Token de Google reutilizado ~50 min en vez de pedir uno nuevo en cada llamada."""
@@ -191,6 +197,18 @@ def obtener_token_fresco():
     return creds.token
 
 def estructurar_carpetas(cc, nom):
+    """Asegura la carpeta del cliente en Drive una sola vez por sesión."""
+    ya = st.session_state.setdefault("_carpetas_ok", set())
+    clave = f"{cc}|{nom}"
+    if clave in ya:
+        return False
+    resultado = _estructurar_carpetas_real(cc, nom)
+    if obtener_id_subcarpeta_drive(cc, nom, "Juzgado"):
+        ya.add(clave)
+    return resultado
+
+
+def _estructurar_carpetas_real(cc, nom):
     """Crea la carpeta del cliente y sus subcarpetas obligatorias en Drive"""
     try:
         token = obtener_token_fresco()
@@ -224,7 +242,11 @@ def estructurar_carpetas(cc, nom):
         return False
 
 def obtener_id_subcarpeta_drive(cc, nom, nombre_subcarpeta):
-    """Obtiene el ID de una subcarpeta interna del cliente"""
+    """Obtiene el ID de una subcarpeta interna del cliente (con memoria para no repetir llamadas)"""
+    clave = f"{cc}|{nom}|{nombre_subcarpeta}"
+    memoria = _almacen_cache()["carpetas"]
+    if clave in memoria:
+        return memoria[clave]
     try:
         token = obtener_token_fresco()
         headers = {"Authorization": f"Bearer {token}"}
@@ -237,9 +259,12 @@ def obtener_id_subcarpeta_drive(cc, nom, nombre_subcarpeta):
         
         q2 = f"name='{nombre_subcarpeta}' and '{cliente_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
         r2 = requests.get(f"https://www.googleapis.com/drive/v3/files?q={requests.utils.quote(q2)}", headers=headers).json().get('files', [])
-        if r2: return r2[0]['id']
+        if r2:
+            memoria[clave] = r2[0]['id']
+            return r2[0]['id']
         return None
-    except:
+    except Exception as e:
+        print(f"⚠️ Error buscando subcarpeta en Drive: {type(e).__name__}")
         return None
 
 def subir_archivo_directo_drive(file_obj, filename, folder_id):
@@ -264,31 +289,49 @@ def subir_archivo_directo_drive(file_obj, filename, folder_id):
             headers=headers,
             files=files
         )
+        _almacen_cache()["listados"].clear()
         return response.status_code == 200
     except Exception as e:
         print(f"Error en subida directa: {e}")
         return False
 
 def listar_y_descargar_archivos_drive(folder_id):
-    """Lista los archivos de una carpeta en Drive para mostrarlos en la Bóveda"""
+    """Lista (id y nombre) los archivos de una carpeta. NO descarga contenido: es rápido."""
     if not folder_id: return []
+    listados = _almacen_cache()["listados"]
+    previo = listados.get(folder_id)
+    if previo and (time.time() - previo[0]) < 60:
+        return previo[1]
     try:
         token = obtener_token_fresco()
         headers = {"Authorization": f"Bearer {token}"}
-        
         query = f"'{folder_id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed=false"
-        res = requests.get(f"https://www.googleapis.com/drive/v3/files?q={requests.utils.quote(query)}&fields=files(id,name)", headers=headers).json()
-        archivos = res.get('files', [])
-        lista = []
-        
-        for a in archivos:
-            dl_res = requests.get(f"https://www.googleapis.com/drive/v3/files/{a['id']}?alt=media", headers=headers)
-            lista.append({'id': a['id'], 'name': a['name'], 'content': dl_res.content})
+        res = requests.get(
+            f"https://www.googleapis.com/drive/v3/files?q={requests.utils.quote(query)}&fields=files(id,name)&pageSize=200",
+            headers=headers, timeout=20
+        ).json()
+        lista = [{'id': a['id'], 'name': a['name']} for a in res.get('files', [])]
+        listados[folder_id] = (time.time(), lista)
         return lista
-    except:
+    except Exception as e:
+        print(f"⚠️ Error listando archivos de Drive: {type(e).__name__}")
         return []
 
+
+def descargar_archivo_drive(file_id):
+    """Descarga el contenido de UN archivo, solo cuando el usuario lo pide."""
+    try:
+        token = obtener_token_fresco()
+        r = requests.get(f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media",
+                         headers={"Authorization": f"Bearer {token}"}, timeout=60)
+        return r.content if r.status_code == 200 else b""
+    except Exception as e:
+        print(f"⚠️ Error descargando archivo de Drive: {type(e).__name__}")
+        return b""
+
 def mover_a_papelera_drive(cc, nom):
+    _almacen_cache()["carpetas"].clear()
+    _almacen_cache()["listados"].clear()
     try:
         token = obtener_token_fresco()
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -308,6 +351,8 @@ def mover_a_papelera_drive(cc, nom):
         return False
 
 def restaurar_de_papelera_drive(cc, nom):
+    _almacen_cache()["carpetas"].clear()
+    _almacen_cache()["listados"].clear()
     try:
         token = obtener_token_fresco()
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -375,105 +420,249 @@ if 'kicked_reason' not in st.session_state: st.session_state.kicked_reason = ""
 
 def cambiar_pagina(p): st.session_state.pagina_actual = p
 
-@st.cache_data(ttl=120, show_spinner=False)
-def leer_tabla(nombre_tabla, columnas_def):
+TTL_TABLAS = 600
+
+
+def _hoja(nombre_tabla):
+    hojas = _almacen_cache()["hojas"]
+    if nombre_tabla not in hojas:
+        hojas[nombre_tabla] = gc_sheet.worksheet(nombre_tabla)
+    return hojas[nombre_tabla]
+
+
+def _leer_tabla_remota(nombre_tabla, columnas_def):
+    """Devuelve (DataFrame, vino_de_sheets)."""
     if gc_sheet:
         try:
-            worksheet = gc_sheet.worksheet(nombre_tabla)
-            data = worksheet.get_all_records()
+            data = _hoja(nombre_tabla).get_all_records()
             df_gs = pd.DataFrame(data)
             if df_gs.empty:
-                return pd.DataFrame(columns=columnas_def)
-            return df_gs
-        except Exception:
-            pass
-    
+                return pd.DataFrame(columns=columnas_def), True
+            return df_gs, True
+        except Exception as e:
+            print(f"⚠️ Error leyendo {nombre_tabla} en Sheets: {type(e).__name__}")
+            _almacen_cache()["hojas"].pop(nombre_tabla, None)
+
     arch = f"db_{nombre_tabla}.csv"
     if not os.path.exists(arch):
         pd.DataFrame(columns=columnas_def).to_csv(arch, index=False)
-    return pd.read_csv(arch)
+    return pd.read_csv(arch), False
+
+
+def leer_tabla(nombre_tabla, columnas_def):
+    """Lee una tabla con caché por tabla (10 min). Se refresca sola al guardarla."""
+    tablas = _almacen_cache()["tablas"]
+    guardado = tablas.get(nombre_tabla)
+    if guardado and (time.time() - guardado[0]) < TTL_TABLAS:
+        return guardado[1].copy()
+    df, desde_sheets = _leer_tabla_remota(nombre_tabla, columnas_def)
+    # Si Sheets falló, la copia local solo dura 30 s para reintentar pronto.
+    marca = time.time() if desde_sheets else time.time() - TTL_TABLAS + 30
+    tablas[nombre_tabla] = (marca, df)
+    return df.copy()
+
 
 def guardar_tabla(df, nombre_tabla):
     arch = f"db_{nombre_tabla}.csv"
     df.to_csv(arch, index=False)
     if gc_sheet:
         try:
-            worksheet = gc_sheet.worksheet(nombre_tabla)
+            worksheet = _hoja(nombre_tabla)
             worksheet.clear()
             worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
         except Exception as e:
             print(f"Error guardando en GSheets {nombre_tabla}: {e}")
-            
-    leer_tabla.clear()
+            _almacen_cache()["hojas"].pop(nombre_tabla, None)
+
+    _almacen_cache()["tablas"].pop(nombre_tabla, None)
 
 # ==========================================
 # 2. MOTOR CSS: SAAS CORPORATIVO ADAPTATIVO (MÓVIL & DESKTOP)
 # ==========================================
 st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-    
-    /* Footer oculto, pero mantenemos el header accesible para poder desplegar el sidebar en celulares */
-    footer {visibility: hidden !important; display: none !important;}
-    
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; background-color: #F8FAFC !important; color: #1E293B !important; }
-    h1, h2, h3, h4, h5, h6 { color: #0F172A !important; font-weight: 700; letter-spacing: -0.5px; }
-    [data-testid="stAppViewContainer"] { background-color: #F4F7F8 !important; background-image: none !important; }
-    
-    /* Ajuste de la barra lateral */
-    [data-testid="stSidebar"] { background-color: #0F172A !important; border-right: 1px solid #1E293B !important; }
-    [data-testid="stSidebar"] p, [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3, [data-testid="stSidebar"] span, [data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] { color: #F8FAFC !important; }
-    
-    [data-testid="stSidebar"] div.stButton > button:first-child {
-        background-color: #1E293B !important;
-        color: #F8FAFC !important;
-        border: 1px solid #334155 !important;
-        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
-    }
-    [data-testid="stSidebar"] div.stButton > button:first-child:hover {
-        background-color: #2563EB !important;
-        border-color: #2563EB !important;
-        color: #FFFFFF !important; 
-        transform: scale(1.05) !important;
-        box-shadow: 0 5px 15px rgba(37,99,235,0.4) !important;
-        z-index: 10;
-    }
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700&display=swap');
 
-    div.stButton > button:first-child { 
-        background: #FFFFFF !important; 
-        color: #2563EB !important; 
-        border: 2px solid #2563EB !important; 
-        border-radius: 6px !important; 
-        padding: 10px 20px !important; 
-        font-weight: 600 !important; 
-        font-size: 13px !important; 
-        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important; 
-        width: 100%;
-    }
-    div.stButton > button:first-child:hover { 
-        background: #2563EB !important; 
-        color: #FFFFFF !important; 
-        box-shadow: 0 8px 20px rgba(37,99,235,0.3) !important; 
-        transform: scale(1.03) translateY(-2px) !important;
-    }
-    
-    /* Corrección de contraste para tarjetas de contenido */
-    .module-card { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
-    .module-card h3, .module-card h4, .module-card p, .module-card span, .module-card b { color: #1E293B !important; } 
-    
-    .module-card-gold { border-top: 4px solid #2563EB !important; } 
-    .module-card-blue { border-top: 4px solid #0EA5E9 !important; }
-    .module-card-green { border-top: 4px solid #10B981 !important; }
-    
-    input, textarea, select, div[data-baseweb="select"] > div, div[data-baseweb="input"] > div { background-color: #FFFFFF !important; color: #0F172A !important; -webkit-text-fill-color: #0F172A !important; border: 1px solid #94A3B8 !important; border-radius: 6px !important; }
-    input:focus, textarea:focus { border-color: #2563EB !important; box-shadow: 0 0 0 2px rgba(37,99,235,0.2) !important; }
-    
-    .timeline { display: flex; justify-content: space-between; align-items: center; margin: 20px 0; position: relative; }
-    .timeline::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: #E2E8F0; z-index: 1; }
-    .step { position: relative; z-index: 2; background: #F8FAFC; padding: 6px 12px; border-radius: 20px; border: 2px solid #E2E8F0; color: #64748B; font-weight: 600; font-size: 11px; display: flex; align-items: center; text-transform: uppercase; }
-    .step.active { border-color: #2563EB; color: #2563EB; box-shadow: 0 0 0 4px rgba(37,99,235,0.1); background: #FFFFFF; }
-    .step.completed { border-color: #10B981; color: #FFFFFF; background: #10B981; }
-    </style>
+:root{
+  --navy:#0B1F3A; --navy2:#16355F; --gold:#C9A24B; --gold2:#E3C777; --gold-dark:#8F7129;
+  --ivory:#F6F3EC; --paper:#FFFFFF; --ink:#1B2433; --muted:#6B7280; --line:#E5DFD3;
+  --burgundy:#7B1E2E; --emerald:#1F7A5C; --sky:#2F6DB5;
+}
+footer{visibility:hidden !important; display:none !important;}
+html, body, [class*="css"]{font-family:'Inter',sans-serif; color:var(--ink);}
+::selection{background:var(--gold2); color:var(--navy);}
+::-webkit-scrollbar{width:10px; height:10px;}
+::-webkit-scrollbar-thumb{background:#CDBF9A; border-radius:8px;}
+[data-testid="stAppViewContainer"]{
+  background: radial-gradient(1100px 480px at 90% -8%, rgba(201,162,75,.12), transparent 60%), var(--ivory) !important;
+}
+[data-testid="stAppViewContainer"]{background-color:var(--ivory) !important;}
+[data-testid="stHeader"]{background:transparent !important;}
+.block-container{padding-top:2.2rem !important; max-width:1280px;}
+
+/* ---------- Animaciones ---------- */
+@keyframes fadeUp{from{opacity:0; transform:translateY(14px);} to{opacity:1; transform:none;}}
+@keyframes slideIn{from{opacity:0; transform:translateX(-18px);} to{opacity:1; transform:none;}}
+@keyframes floaty{0%,100%{transform:translateY(0);} 50%{transform:translateY(-7px);}}
+@keyframes pulseRed{0%,100%{box-shadow:0 0 0 0 rgba(123,30,46,.35);} 50%{box-shadow:0 0 0 9px rgba(123,30,46,0);}}
+@keyframes shimmer{0%{background-position:-200% 0;} 100%{background-position:200% 0;}}
+@media (prefers-reduced-motion: reduce){*{animation:none !important; transition:none !important;}}
+
+/* ---------- Tipografía ---------- */
+h1,h2,h3,h4,h5{font-family:'Playfair Display', Georgia, serif !important; color:var(--navy) !important; letter-spacing:-.2px;}
+[data-testid="stMarkdownContainer"] h1{
+  font-size:2.1rem !important; font-weight:700 !important; padding:0 0 .5rem 0 !important;
+  animation:slideIn .5s ease both;
+}
+[data-testid="stMarkdownContainer"] h1::after{
+  content:''; display:block; width:68px; height:4px; margin-top:10px; border-radius:4px;
+  background:linear-gradient(90deg,var(--gold),var(--gold2));
+}
+[data-testid="stMarkdownContainer"] p{color:var(--ink);}
+[data-testid="stWidgetLabel"] p, label p{color:var(--navy) !important; font-weight:600 !important; font-size:13px !important;}
+
+/* ---------- Tarjetas ---------- */
+.module-card{
+  background:var(--paper); border:1px solid var(--line); border-radius:14px; padding:18px 22px; margin-bottom:14px;
+  box-shadow:0 1px 2px rgba(11,31,58,.04), 0 10px 26px -14px rgba(11,31,58,.16);
+  transition:transform .25s ease, box-shadow .25s ease; animation:fadeUp .5s ease both;
+}
+.module-card:hover{transform:translateY(-2px); box-shadow:0 1px 2px rgba(11,31,58,.05), 0 18px 34px -16px rgba(11,31,58,.26);}
+.module-card h3,.module-card h4{color:var(--navy) !important; margin:0 0 6px 0;}
+.module-card p,.module-card span,.module-card b{color:var(--ink) !important;}
+.module-card-gold{border-top:4px solid var(--gold) !important;}
+.module-card-blue{border-top:4px solid var(--sky) !important;}
+.module-card-green{border-top:4px solid var(--emerald) !important;}
+/* Tarjetas que solo traen un título: se muestran como encabezado de sección */
+.module-card:has(> h3:only-child), .module-card:has(> h4:only-child){
+  background:transparent; border:none; border-left:4px solid var(--gold); border-radius:0; box-shadow:none;
+  padding:2px 0 2px 12px; margin:14px 0 6px 0; animation:slideIn .45s ease both;
+}
+.module-card:has(> h3:only-child):hover, .module-card:has(> h4:only-child):hover{transform:none; box-shadow:none;}
+/* Contenedores vacíos que dejaba el HTML antiguo: se ocultan */
+[data-testid="stElementContainer"]:has(.module-card:not(:has(*))),
+.element-container:has(.module-card:not(:has(*))),
+[data-testid="stElementContainer"]:has([data-testid="stMarkdownContainer"]:empty){display:none !important;}
+
+.kpi{
+  position:relative; background:var(--paper); border:1px solid var(--line); border-radius:16px; padding:18px 20px 16px 24px;
+  overflow:hidden; box-shadow:0 10px 26px -16px rgba(11,31,58,.25); transition:transform .25s ease, box-shadow .25s ease;
+  animation:fadeUp .6s ease both; margin-bottom:10px;
+}
+.kpi::before{content:''; position:absolute; left:0; top:0; bottom:0; width:6px; background:var(--accent,var(--gold));}
+.kpi:hover{transform:translateY(-4px); box-shadow:0 22px 40px -18px rgba(11,31,58,.38);}
+.kpi .ico{font-size:24px; width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center;
+  background:var(--accent-bg, rgba(201,162,75,.15)); margin-bottom:10px;}
+.kpi .lbl{font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--muted) !important; margin:0;}
+.kpi .val{font-family:'Playfair Display',Georgia,serif; font-size:2rem; font-weight:700; color:var(--navy) !important; margin:2px 0 0 0; line-height:1.15;}
+.law-card{
+  background:linear-gradient(135deg,var(--navy) 0%,var(--navy2) 100%); border-radius:16px; padding:22px 26px;
+  box-shadow:0 20px 40px -20px rgba(11,31,58,.55); animation:fadeUp .6s ease both; margin-bottom:14px;
+  border-top:4px solid var(--gold);
+}
+.law-card h3{color:var(--gold2) !important; font-size:1.3rem; margin:0 0 10px 0;}
+.law-card p, .law-card b{color:#E8ECF3 !important; font-size:14px; line-height:1.75; margin:0;}
+
+/* ---------- Formularios, tabs, expanders ---------- */
+[data-testid="stForm"]{
+  background:var(--paper); border:1px solid var(--line) !important; border-top:4px solid var(--gold) !important;
+  border-radius:14px !important; padding:22px !important; animation:fadeUp .5s ease both;
+  box-shadow:0 10px 26px -16px rgba(11,31,58,.2);
+}
+input, textarea, div[data-baseweb="select"] > div, div[data-baseweb="input"] > div, div[data-baseweb="textarea"] > div{
+  background-color:#FFFFFF !important; color:var(--ink) !important; -webkit-text-fill-color:var(--ink) !important;
+  border-color:#D5CDBB !important; border-radius:10px !important;
+}
+input:focus, textarea:focus{border-color:var(--gold) !important; box-shadow:0 0 0 3px rgba(201,162,75,.28) !important;}
+button[data-baseweb="tab"]{font-weight:600; color:var(--muted);}
+button[data-baseweb="tab"][aria-selected="true"]{color:var(--navy) !important;}
+[data-baseweb="tab-highlight"]{background:var(--gold) !important; height:3px !important;}
+[data-testid="stExpander"]{border:1px solid var(--line) !important; border-radius:12px !important; background:var(--paper); overflow:hidden;}
+[data-testid="stExpander"] summary:hover{background:rgba(201,162,75,.10);}
+[data-testid="stAlert"]{border-radius:12px !important;}
+[data-testid="stDataFrame"]{border-radius:12px; overflow:hidden; box-shadow:0 8px 22px -14px rgba(11,31,58,.3);}
+[data-testid="stMetric"]{background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:12px 16px;}
+
+/* ---------- Botones (área principal) ---------- */
+div.stButton > button, div[data-testid="stFormSubmitButton"] > button, div.stDownloadButton > button,
+a[data-testid^="stBaseLinkButton"]{
+  background:linear-gradient(135deg,var(--navy),var(--navy2)) !important; color:#FFFFFF !important;
+  border:1px solid var(--navy) !important; border-radius:10px !important; font-weight:600 !important;
+  letter-spacing:.2px; padding:.5rem 1rem !important;
+  transition:transform .2s ease, box-shadow .2s ease, background .2s ease !important;
+}
+div.stButton > button p, div[data-testid="stFormSubmitButton"] > button p, div.stDownloadButton > button p{color:inherit !important;}
+div.stButton > button:hover, div[data-testid="stFormSubmitButton"] > button:hover, div.stDownloadButton > button:hover,
+a[data-testid^="stBaseLinkButton"]:hover{
+  background:linear-gradient(135deg,var(--gold),var(--gold2)) !important; color:var(--navy) !important;
+  border-color:var(--gold) !important; transform:translateY(-2px); box-shadow:0 12px 24px -10px rgba(201,162,75,.7) !important;
+}
+div.stButton > button:active{transform:translateY(0) scale(.98);}
+
+/* ---------- Barra lateral ---------- */
+[data-testid="stSidebar"]{
+  background:linear-gradient(180deg,#0B1F3A 0%,#081528 100%) !important; border-right:1px solid rgba(201,162,75,.28) !important;
+}
+[data-testid="stSidebar"] p, [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3,
+[data-testid="stSidebar"] span, [data-testid="stSidebar"] label, [data-testid="stSidebar"] div[data-testid="stMarkdownContainer"]{color:#E8ECF3 !important;}
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p{color:#E8ECF3 !important;}
+.brand{display:flex; align-items:center; gap:10px; padding:4px 4px 14px 4px; animation:slideIn .5s ease both;}
+.brand .seal{width:38px; height:38px; border-radius:11px; background:linear-gradient(135deg,var(--gold),var(--gold2));
+  display:flex; align-items:center; justify-content:center; font-size:20px; box-shadow:0 8px 18px -8px rgba(201,162,75,.8);}
+.brand .name{font-family:'Playfair Display',Georgia,serif; font-size:19px; font-weight:700; color:#FFFFFF !important; line-height:1.1;}
+.brand .sub{font-size:10px; letter-spacing:1.6px; color:var(--gold2) !important; text-transform:uppercase;}
+.nav-label{color:#8FA3C0 !important; font-size:10.5px !important; font-weight:700 !important; letter-spacing:1.8px; text-transform:uppercase; margin:18px 0 6px 6px !important;}
+.nav-hr{border:none; height:1px; background:linear-gradient(90deg,transparent,rgba(201,162,75,.55),transparent); margin:10px 0;}
+.rol-badge{display:inline-block; padding:2px 10px; border-radius:20px; font-size:10.5px; font-weight:700; letter-spacing:.6px;
+  background:rgba(201,162,75,.16); border:1px solid rgba(201,162,75,.5); color:var(--gold2) !important;}
+[data-testid="stSidebar"] div.stButton > button{
+  width:100%; justify-content:flex-start !important; text-align:left !important; background:transparent !important;
+  color:#DCE3EE !important; border:1px solid transparent !important; border-radius:10px !important;
+  padding:.5rem .8rem !important; font-weight:500 !important; box-shadow:none !important; transition:all .2s ease !important;
+}
+[data-testid="stSidebar"] div.stButton > button > div{justify-content:flex-start !important; width:100%;}
+[data-testid="stSidebar"] div.stButton > button p{color:inherit !important; text-align:left !important;}
+[data-testid="stSidebar"] div.stButton > button:hover{
+  background:rgba(201,162,75,.14) !important; border-color:rgba(201,162,75,.5) !important; color:#FFFFFF !important;
+  transform:translateX(5px) !important; box-shadow:none !important;
+}
+[data-testid="stSidebar"] div.stButton > button[kind="primary"],
+[data-testid="stSidebar"] div.stButton > button[data-testid="stBaseButton-primary"]{
+  background:linear-gradient(135deg,var(--gold),var(--gold2)) !important; color:var(--navy) !important; font-weight:700 !important;
+  box-shadow:0 10px 20px -10px rgba(201,162,75,.8) !important;
+}
+[data-testid="stSidebar"] div.stButton > button[kind="primary"]:hover,
+[data-testid="stSidebar"] div.stButton > button[data-testid="stBaseButton-primary"]:hover{color:var(--navy) !important; transform:translateX(3px) !important;}
+[data-testid="stSidebar"] .st-key-b_logout button{border-color:rgba(255,255,255,.18) !important; margin-top:6px;}
+
+/* ---------- Login ---------- */
+.login-hero{text-align:center; padding:6px 0 4px 0;}
+.login-hero .seal{width:82px; height:82px; margin:0 auto 14px auto; border-radius:24px; font-size:42px;
+  background:linear-gradient(135deg,var(--navy),var(--navy2)); display:flex; align-items:center; justify-content:center;
+  box-shadow:0 20px 40px -18px rgba(11,31,58,.7), 0 0 0 4px rgba(201,162,75,.45); animation:floaty 4s ease-in-out infinite;}
+.login-hero h1::after{margin-left:auto; margin-right:auto;}
+.login-hero p{color:var(--muted) !important; font-size:13px; margin:8px 0 18px 0;}
+
+/* ---------- Vencimientos y línea de tiempo ---------- */
+.venc{border-left:5px solid var(--c,#10B981); padding:12px 16px; background:#FFFFFF; margin-bottom:8px; border-radius:10px;
+  box-shadow:0 8px 20px -14px rgba(11,31,58,.3); color:var(--ink); animation:fadeUp .45s ease both; transition:transform .2s ease;}
+.venc:hover{transform:translateX(4px);}
+.venc-peligro{animation:fadeUp .45s ease both, pulseRed 2s ease-in-out infinite;}
+.timeline{display:flex; justify-content:space-between; align-items:center; margin:20px 0; position:relative;}
+.timeline::before{content:''; position:absolute; top:50%; left:0; right:0; height:2px; background:var(--line); z-index:1;}
+.step{position:relative; z-index:2; background:var(--ivory); padding:6px 12px; border-radius:20px; border:2px solid var(--line); color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase;}
+.step.active{border-color:var(--gold); color:var(--navy); background:#FFFFFF;}
+.step.completed{border-color:var(--emerald); color:#FFFFFF; background:var(--emerald);}
+.boveda-sub{color:var(--gold-dark) !important; font-weight:700; margin:6px 0 2px 0; font-size:13px; letter-spacing:.4px;}
+.archivo{font-size:12.5px; color:var(--ink);}
+
+@media (max-width:768px){
+  .block-container{padding:1rem .8rem !important;}
+  [data-testid="stMarkdownContainer"] h1{font-size:1.6rem !important;}
+  .kpi .val{font-size:1.6rem;}
+}
+
+</style>
 """, unsafe_allow_html=True)
 
 
@@ -576,33 +765,44 @@ def generar_ics(cliente, fecha_hora_str, motivo):
 
 def mostrar_boveda(cc, nom):
     with st.expander("📂 BÓVEDA CENTRAL DE ARCHIVOS EN GOOGLE DRIVE", expanded=False):
+        cargar = st.toggle("Cargar archivos de la bóveda", key=f"tgl_bov_{cc}",
+                           help="Drive solo se consulta cuando activas esto, así la app va más rápida.")
+        if not cargar:
+            st.caption("Activa el interruptor para ver, descargar o borrar los archivos de este expediente.")
+            return
         estructurar_carpetas(cc, nom)
         subcarpetas = ["Financiero", "Juzgado", "Notaria", "Acreedores"]
         cols = st.columns(2)
-        
+
         for i, sub in enumerate(subcarpetas):
             col = cols[i % 2]
-            col.markdown(f"<p style='color:#2563EB; margin-bottom:2px; font-weight:bold;'>{sub}</p>", unsafe_allow_html=True)
+            col.markdown(f"<p class='boveda-sub'>📁 {sub}</p>", unsafe_allow_html=True)
             folder_id = obtener_id_subcarpeta_drive(cc, nom, sub)
-            
+
             if folder_id:
                 archivos = listar_y_descargar_archivos_drive(folder_id)
                 if archivos:
                     for a in archivos:
-                        c_down, c_del = col.columns([4, 1])
-                        c_down.download_button(
-                            f"📄 {a['name'][:20]}...", 
-                            a['content'], 
-                            file_name=a['name'], 
-                            key=f"dl_drive_{cc}_{sub}_{a['id']}", 
-                            use_container_width=True
-                        )
+                        c_nom, c_dl, c_del = col.columns([5, 1.3, 1.3])
+                        c_nom.markdown(f"<span class='archivo'>📄 {escape(a['name'][:30])}</span>", unsafe_allow_html=True)
+                        buf_key = f"dlbuf_{a['id']}"
+                        if buf_key in st.session_state:
+                            c_dl.download_button("💾", st.session_state[buf_key], file_name=a['name'],
+                                                 key=f"dl_drive_{cc}_{sub}_{a['id']}", help="Guardar el archivo en tu equipo")
+                        elif c_dl.button("⬇️", key=f"prep_{cc}_{sub}_{a['id']}", help="Preparar descarga"):
+                            st.session_state[buf_key] = descargar_archivo_drive(a['id'])
+                            st.rerun()
                         if c_del.button("🗑️", key=f"del_drive_{cc}_{sub}_{a['id']}", help="Borrar archivo de Google Drive"):
                             token = obtener_token_fresco()
-                            requests.delete(f"https://www.googleapis.com/drive/v3/files/{a['id']}", headers={"Authorization": f"Bearer {token}"})
+                            requests.delete(f"https://www.googleapis.com/drive/v3/files/{a['id']}",
+                                            headers={"Authorization": f"Bearer {token}"}, timeout=20)
+                            st.session_state.pop(buf_key, None)
+                            _almacen_cache()["listados"].clear()
                             st.rerun()
                 else:
-                    col.markdown("<span style='color:#64748B; font-size:12px;'><i>Carpeta vacía</i></span>", unsafe_allow_html=True)
+                    col.markdown("<span class='archivo' style='color:#6B7280;'><i>Carpeta vacía</i></span>", unsafe_allow_html=True)
+            else:
+                col.markdown("<span class='archivo' style='color:#6B7280;'><i>Carpeta no disponible (revisa la conexión con Drive)</i></span>", unsafe_allow_html=True)
             col.write("")
 
 # ==========================================
@@ -629,9 +829,9 @@ if not st.session_state.autenticado:
     with col2:
         if st.session_state.kicked:
             st.error(f"🚨 ALERTA: {st.session_state.kicked_reason}"); st.session_state.kicked = False
-        st.markdown("""<div class="module-card module-card-gold" style="text-align: center; padding: 40px;"><span style="font-size: 50px;">⚖️</span><h2>ACCESO RESTRINGIDO</h2><p style="color: #A1A1AA; font-size: 13px; margin-bottom: 30px;">Plataforma LegalTech Cifrada (Google Cloud DB)</p>""", unsafe_allow_html=True)
+        st.markdown("""<div class="login-hero"><div class="seal">⚖️</div><h1>Insolvencia OS</h1><p>Plataforma jurídica de gestión de expedientes · Acceso restringido</p></div>""", unsafe_allow_html=True)
         with st.form("login_form"):
-            user_input = st.text_input("👤 Usuario")
+            user_input = st.text_input("👤 Usuario", placeholder="Tu usuario")
             pass_input = st.text_input("🔑 Contraseña", type="password")
             if st.form_submit_button("AUTENTICAR CREDENCIALES"):
                 df_u = leer_tabla("usuarios", ["Usuario", "Password", "Rol", "Creador", "Alias", "Avatar_Path", "Session_Token"])
@@ -644,26 +844,32 @@ if not st.session_state.autenticado:
                     st.session_state.avatar_path = str(user_match.iloc[0].get("Avatar_Path", ""))
                     nuevo_token = uuid.uuid4().hex
                     st.session_state.session_token = nuevo_token
+                    df_u["Session_Token"] = df_u["Session_Token"].astype(object)
                     df_u.loc[df_u["Usuario"].astype(str) == user_input, "Session_Token"] = nuevo_token
                     guardar_tabla(df_u, "usuarios")
                     registrar_log("AUTH", f"Inició sesión: {user_input}")
+                    st.session_state.bienvenida = True
                     st.rerun()
                 else: st.error("❌ Credenciales inválidas.")
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.caption("🔒 Sesión única por usuario. Toda actividad queda registrada.")
     st.stop()
 
 # ==========================================
 # 5. SIDEBAR ORDENADO
 # ==========================================
+if st.session_state.pop("bienvenida", False):
+    st.toast(f"Bienvenido/a, {st.session_state.alias_actual}", icon="⚖️")
+
 with st.sidebar:
+    st.markdown("<div class='brand'><div class='seal'>⚖️</div><div><div class='name'>Insolvencia OS</div><div class='sub'>Gestión jurídica</div></div></div>", unsafe_allow_html=True)
     avatar_p = st.session_state.get('avatar_path', '')
     if pd.notna(avatar_p) and str(avatar_p).strip() != "" and os.path.exists(avatar_p):
         with open(avatar_p, "rb") as f: encoded_img = base64.b64encode(f.read()).decode()
-        st.markdown(f"""<div style="text-align:center; margin-bottom: 10px;"><img src="data:image/png;base64,{encoded_img}" style="width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 2px solid #D4AF37; box-shadow: 0 0 15px rgba(212,175,55,0.3);"></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div style="text-align:center; margin-bottom: 10px;"><img src="data:image/png;base64,{encoded_img}" style="width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 2px solid #C9A24B; box-shadow: 0 0 15px rgba(212,175,55,0.3);"></div>""", unsafe_allow_html=True)
     else:
-        st.markdown("""<div style="width: 60px; height: 60px; background: #D4AF37; border-radius: 50%; margin: 0 auto 10px auto; display:flex; align-items:center; justify-content:center; box-shadow: 0 0 15px rgba(212,175,55,0.3);"><span style="font-size: 30px;">⚖️</span></div>""", unsafe_allow_html=True)
+        st.markdown("""<div style="width: 60px; height: 60px; background: #C9A24B; border-radius: 50%; margin: 0 auto 10px auto; display:flex; align-items:center; justify-content:center; box-shadow: 0 0 15px rgba(212,175,55,0.3);"><span style="font-size: 30px;">⚖️</span></div>""", unsafe_allow_html=True)
 
-    st.markdown(f"""<div style="text-align:center; padding-bottom: 10px; margin-bottom: 15px;"><h3 style="color: #F8FAFC !important; font-size: 18px; margin:0;">{st.session_state.alias_actual}</h3><span style="color: #3B82F6; font-size: 11px; font-weight: bold;">{st.session_state.rol_actual}</span></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div style="text-align:center; padding-bottom: 10px; margin-bottom: 15px;"><h3 style="color: #F8FAFC !important; font-size: 18px; margin:0;">{st.session_state.alias_actual}</h3><span class="rol-badge">{st.session_state.rol_actual}</span></div>""", unsafe_allow_html=True)
     
     with st.expander("⚙️ Mi Perfil"):
         with st.form("form_perfil"):
@@ -681,37 +887,40 @@ with st.sidebar:
                 st.session_state.alias_actual = n_alias; st.session_state.avatar_path = p_guardado
                 st.success("Perfil Actualizado"); st.rerun()
 
-    st.markdown("<hr style='border-color: #27272A; margin-top: 0;'>", unsafe_allow_html=True)
-    
-    st.markdown("<p style='color:#71717A; font-size:11px; font-weight:bold; letter-spacing:1px;'>🏠 INICIO & GESTIÓN</p>", unsafe_allow_html=True)
-    if st.button("📊 Portal Ejecutivo", key="b_dash"): cambiar_pagina("Dashboard")
-    if st.button("📝 Apertura de Casos", key="b_nuev"): cambiar_pagina("Nuevo")
-    if st.button("📅 Agenda y Citas", key="b_agen"): cambiar_pagina("Agenda")
-    if st.button("✅ Gestor de Tareas", key="b_tar"): cambiar_pagina("Tareas")
-    if st.button("🗑️ Papelera de Reciclaje", key="b_pap"): cambiar_pagina("Papelera")
-    
-    st.markdown("<br><p style='color:#71717A; font-size:11px; font-weight:bold; letter-spacing:1px;'>⚖️ OPERACIÓN JURÍDICA</p>", unsafe_allow_html=True)
-    if st.button("⚙️ Contratos y Docs", key="b_cont"): cambiar_pagina("Contratos")
-    if st.button("📂 Seguimiento Procesal", key="b_act"): cambiar_pagina("Actuaciones")
-    if st.button("🚦 Control Vencimientos", key="b_ven"): cambiar_pagina("Vencimientos")
-    if st.button("🤖 Dependiente Virtual", key="b_mem"): cambiar_pagina("Memoriales")
+    st.markdown("<hr class='nav-hr'>", unsafe_allow_html=True)
 
-            # Agrega este botón en tu sidebar
-    if st.button("🔍 Rastreador Judicial", use_container_width=True):
-       st.session_state.pagina_actual = 'Rastreador'
-       st.rerun()
-            
-    
-    st.markdown("<br><p style='color:#71717A; font-size:11px; font-weight:bold; letter-spacing:1px;'>💰 FINANZAS & ADMIN</p>", unsafe_allow_html=True)
-    if st.button("📋 Pasivos y Acreedores", key="b_acr"): cambiar_pagina("Acreedores")
-    
+    def boton_menu(etiqueta, pagina, clave):
+        activo = st.session_state.pagina_actual == pagina
+        st.button(etiqueta, key=clave, use_container_width=True,
+                  type="primary" if activo else "secondary",
+                  on_click=cambiar_pagina, args=(pagina,))
+
+    def cerrar_sesion():
+        st.session_state.autenticado = False
+
+    st.markdown("<p class='nav-label'>Inicio y gestión</p>", unsafe_allow_html=True)
+    boton_menu("📊  Portal Ejecutivo", "Dashboard", "b_dash")
+    boton_menu("📝  Apertura de Casos", "Nuevo", "b_nuev")
+    boton_menu("📅  Agenda y Citas", "Agenda", "b_agen")
+    boton_menu("✅  Gestor de Tareas", "Tareas", "b_tar")
+    boton_menu("🗑️  Papelera de Reciclaje", "Papelera", "b_pap")
+
+    st.markdown("<p class='nav-label'>Operación jurídica</p>", unsafe_allow_html=True)
+    boton_menu("⚙️  Contratos y Docs", "Contratos", "b_cont")
+    boton_menu("📂  Seguimiento Procesal", "Actuaciones", "b_act")
+    boton_menu("🚦  Control Vencimientos", "Vencimientos", "b_ven")
+    boton_menu("🤖  Dependiente Virtual", "Memoriales", "b_mem")
+    boton_menu("🔍  Rastreador Judicial", "Rastreador", "b_rast")
+
+    st.markdown("<p class='nav-label'>Finanzas y administración</p>", unsafe_allow_html=True)
+    boton_menu("📋  Pasivos y Acreedores", "Acreedores", "b_acr")
     if st.session_state.rol_actual == "Administrador (Jefa)":
-        if st.button("💰 Cobros y Facturación", key="b_fin"): cambiar_pagina("Finanzas")
-        if st.button("👥 Accesos y Seguridad", key="b_usr"): cambiar_pagina("Usuarios")
-        if st.button("🛡️ Auditoría y Exportación", key="b_sis"): cambiar_pagina("Sistema")
-        
-    st.markdown("<hr style='border-color: #27272A;'>", unsafe_allow_html=True)
-    if st.button("🚪 Cerrar Sesión"): st.session_state.autenticado = False; st.rerun()
+        boton_menu("💰  Cobros y Facturación", "Finanzas", "b_fin")
+        boton_menu("👥  Accesos y Seguridad", "Usuarios", "b_usr")
+        boton_menu("🛡️  Auditoría y Exportación", "Sistema", "b_sis")
+
+    st.markdown("<hr class='nav-hr'>", unsafe_allow_html=True)
+    st.button("🚪  Cerrar Sesión", key="b_logout", use_container_width=True, on_click=cerrar_sesion)
 
 # ==========================================
 # 6. MÓDULOS DE LA APLICACIÓN
@@ -723,10 +932,17 @@ if st.session_state.pagina_actual == 'Dashboard':
     total_cartera = sum([(limpiar_num(r["Honorarios"]) - limpiar_num(r["Abonado"])) for _, r in df_fin[df_fin["Cedula"].astype(str).isin(df_activos["Cedula"].astype(str))].iterrows() if limpiar_num(r["Honorarios"]) > limpiar_num(r["Abonado"])])
     
     c1, c2, c3, c4 = st.columns(4)
-    c1.markdown(f"<div class='module-card module-card-blue'><h4>Expedientes Activos</h4><h2>{len(df_activos)}</h2></div>", unsafe_allow_html=True)
-    c2.markdown(f"<div class='module-card module-card-gold'><h4>En Trámite</h4><h2>{len(df_activos[df_activos['Senal'].isin([1,2,3])])}</h2></div>", unsafe_allow_html=True)
-    c3.markdown(f"<div class='module-card module-card-green'><h4>Radicados</h4><h2>{len(df_activos[df_activos['Senal'] >= 4])}</h2></div>", unsafe_allow_html=True)
-    if st.session_state.rol_actual == "Administrador (Jefa)": c4.markdown(f"<div class='module-card module-card-gold'><h4>Cartera Pendiente</h4><h2 style='color:#FACC15;'>$ {total_cartera:,.0f}</h2></div>", unsafe_allow_html=True)
+    def kpi(icono, etiqueta, valor, color, fondo, retraso):
+        return (f"<div class='kpi' style='--accent:{color}; --accent-bg:{fondo}; animation-delay:{retraso}s;'>"
+                f"<div class='ico'>{icono}</div><p class='lbl'>{etiqueta}</p><p class='val'>{valor}</p></div>")
+
+    n_tramite = len(df_activos[df_activos['Senal'].isin([1, 2, 3])])
+    n_radicados = len(df_activos[df_activos['Senal'] >= 4])
+    c1.markdown(kpi("📁", "Expedientes activos", len(df_activos), "#2F6DB5", "rgba(47,109,181,.14)", 0), unsafe_allow_html=True)
+    c2.markdown(kpi("⏳", "En trámite", n_tramite, "#C9A24B", "rgba(201,162,75,.18)", .08), unsafe_allow_html=True)
+    c3.markdown(kpi("🏛️", "Radicados", n_radicados, "#1F7A5C", "rgba(31,122,92,.14)", .16), unsafe_allow_html=True)
+    if st.session_state.rol_actual == "Administrador (Jefa)":
+        c4.markdown(kpi("💰", "Cartera pendiente", f"$ {total_cartera:,.0f}", "#7B1E2E", "rgba(123,30,46,.12)", .24), unsafe_allow_html=True)
 
     st.markdown("<div class='module-card'><h3>🔍 Buscador Rápido de Expedientes</h3>", unsafe_allow_html=True)
     busq = st.text_input("Ingresa nombre o cédula para encontrar al cliente de inmediato:")
@@ -739,18 +955,16 @@ if st.session_state.pagina_actual == 'Dashboard':
     col_info1, col_info2 = st.columns([1.5, 1])
     with col_info1:
         st.markdown("""
-            <div class='module-card module-card-gold'>
-                <h3 style='color: #FACC15; font-size: 20px; margin-bottom: 15px;'>📜 Ley 1564 de 2012</h3>
-                <p style='color: #D4D4D8; font-size: 14px; line-height: 1.6;'>
-                <b>Ventajas principales de la Insolvencia:</b><br>
-                • Suspensión inmediata de embargos y procesos.<br>
-                • Protección del patrimonio familiar.<br>
-                • Reactivación financiera y paz mental.
-                </p>
+            <div class='law-card'>
+                <h3>📜 Insolvencia de persona natural no comerciante</h3>
+                <p><b>Ventajas principales del trámite:</b><br>
+                • Posibilidad de suspender procesos ejecutivos y embargos, según lo que decida el juez.<br>
+                • Orden de pago ajustado a la capacidad real del deudor.<br>
+                • Ruta legal para reorganizar las deudas con sus acreedores.</p>
             </div>
         """, unsafe_allow_html=True)
     with col_info2:
-        st.markdown("<div class='module-card'><h3 style='font-size: 18px; color:#F8FAFC !important;'>🔔 Alertas de Proceso</h3>", unsafe_allow_html=True)
+        st.markdown("<div class='module-card'><h3 style='font-size: 18px;'>🔔 Alertas de Proceso</h3>", unsafe_allow_html=True)
         hay_alertas = False
         if not df_activos.empty:
             for _, r in df_activos.iterrows():
@@ -764,7 +978,7 @@ if st.session_state.pagina_actual == 'Dashboard':
         if not hay_alertas: st.success("✨ Expedientes fluyendo con normalidad.")
         st.markdown("</div>", unsafe_allow_html=True)
         
-    st.markdown("<hr style='border-color: #27272A;'><h3 style='color:#EF4444;'>⚠️ Zona de Peligro: Gestión de Archivo</h3>", unsafe_allow_html=True)
+    st.markdown("<hr class='nav-hr' style='background:linear-gradient(90deg,transparent,#CDBF9A,transparent);'><h3 style='color:#7B1E2E !important;'>⚠️ Zona de peligro: gestión de archivo</h3>", unsafe_allow_html=True)
     st.markdown("<div class='module-card'>", unsafe_allow_html=True)
     if not df_activos.empty:
         with st.form("form_borrar"):
@@ -962,7 +1176,7 @@ elif st.session_state.pagina_actual == 'Contratos':
         /* Línea decorativa superior dinámica */
         .premium-card::before {
             content: ''; position: absolute; top: 0; left: 0; right: 0; height: 5px;
-            background: linear-gradient(90deg, #0F172A 0%, #D4AF37 100%);
+            background: linear-gradient(90deg, #0F172A 0%, #C9A24B 100%);
         }
 
         /* Línea de tiempo superior (Estilo SaaS Moderno) */
@@ -971,7 +1185,7 @@ elif st.session_state.pagina_actual == 'Contratos':
         
         .p-step { position: relative; z-index: 2; padding: 10px 25px; border-radius: 30px; font-weight: 700; font-size: 13px; color: #64748B; background: #F8FAFC; border: 3px solid #E2E8F0; transition: all 0.4s ease; text-transform: uppercase; letter-spacing: 0.5px; }
         .p-step.completed { background: #10B981; color: white; border-color: #059669; box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); }
-        .p-step.active { background: #0F172A; color: #D4AF37; border-color: #D4AF37; transform: scale(1.08) translateY(-2px); box-shadow: 0 10px 20px rgba(15, 23, 42, 0.3); }
+        .p-step.active { background: #0F172A; color: #C9A24B; border-color: #C9A24B; transform: scale(1.08) translateY(-2px); box-shadow: 0 10px 20px rgba(15, 23, 42, 0.3); }
         </style>
         """, unsafe_allow_html=True)
 
@@ -1279,7 +1493,8 @@ elif st.session_state.pagina_actual == 'Vencimientos':
                 else:
                     cb = "#10B981"
                     est = f"En término ({dias} días)"
-                st.markdown(f"<div style='border-left: 5px solid {cb}; padding: 12px; background:#FFFFFF; color:#1E293B; margin-bottom:8px; border-radius:6px;'><b>{rv['Cliente']}</b> - {rv['Asunto']}<br>{est} (Límite: {rv['Fecha_Limite']})</div>", unsafe_allow_html=True)
+                clase_v = "venc venc-peligro" if 0 <= dias <= 2 else "venc"
+                st.markdown(f"<div class='{clase_v}' style='--c:{cb};'><b>{escape(str(rv['Cliente']))}</b> · {escape(str(rv['Asunto']))}<br><span style='color:{cb}; font-weight:700;'>{est}</span> <span style='color:#6B7280;'>(Límite: {escape(str(rv['Fecha_Limite']))})</span></div>", unsafe_allow_html=True)
             except ValueError as e:
                 print(f"⚠️ Fecha inválida en vencimiento: {e}")
 
@@ -1538,7 +1753,7 @@ elif st.session_state.pagina_actual == 'Finanzas':
                             st.rerun()
                             
                 if 'ultimo_pdf_factura' in st.session_state and os.path.exists(st.session_state['ultimo_pdf_factura']):
-                    st.markdown("<hr style='border-color: #27272A;'><h3 style='color:#10B981;'>🧾 Factura Oficial Generada</h3>", unsafe_allow_html=True)
+                    st.markdown("<hr class='nav-hr' style='background:linear-gradient(90deg,transparent,#CDBF9A,transparent);'><h3 style='color:#10B981;'>🧾 Factura Oficial Generada</h3>", unsafe_allow_html=True)
                     col_f1, col_f2 = st.columns(2)
                     with col_f1:
                         with open(st.session_state['ultimo_pdf_factura'], "rb") as f:
