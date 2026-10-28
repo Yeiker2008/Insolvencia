@@ -7,7 +7,8 @@ import shutil
 import base64
 import random
 import uuid
-from datetime import datetime, timedelta
+import calendar
+from datetime import datetime, timedelta, timezone
 import time
 import requests
 import json
@@ -73,7 +74,12 @@ from google.auth.transport.requests import Request
 from html import escape
 from notificaciones import enviar_email, enviar_telegram, enviar_alertas_vencimientos, notificar_nuevo_vencimiento
 
-st.set_page_config(page_title="Insolvencia OS | Enterprise", page_icon="⚖", layout="wide", initial_sidebar_state="expanded")
+
+def ahora_colombia():
+    """Hora de Colombia (UTC-5). El servidor de Streamlit corre en UTC y desfasaba las fechas por la noche."""
+    return datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=5)
+
+st.set_page_config(page_title="Insolvencia OS | Enterprise", page_icon="⚖", layout="wide", initial_sidebar_state="collapsed")
 
 # ==========================================
 # MOTOR OSINT: BYPASS DE LA RAMA JUDICIAL
@@ -481,185 +487,284 @@ def guardar_tabla(df, nombre_tabla):
 # ==========================================
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap');
 
 :root{
-  --navy:#0B1F3A; --navy2:#16355F; --gold:#C9A24B; --gold2:#E3C777; --gold-dark:#8F7129;
-  --ivory:#F6F3EC; --paper:#FFFFFF; --ink:#1B2433; --muted:#6B7280; --line:#E5DFD3;
-  --burgundy:#7B1E2E; --emerald:#1F7A5C; --sky:#2F6DB5;
+  --navy:#0A1628; --navy2:#13294B; --navy3:#1B3A6B; --gold:#C9A24B; --gold2:#E6C873; --gold-dark:#8F7129;
+  --canvas:#EEF1F7; --paper:#FFFFFF; --ink:#14213A; --muted:#667085; --line:#E3E8F1;
+  --burgundy:#8A1F35; --emerald:#1F7A5C; --sky:#2F6DB5; --violet:#6B5BA6; --orange:#D9822B;
+  --radius:20px;
 }
 footer{visibility:hidden !important; display:none !important;}
-html, body, [class*="css"]{font-family:'Inter',sans-serif; color:var(--ink);}
+html, body, [class*="css"]{font-family:'Plus Jakarta Sans',sans-serif; color:var(--ink);}
 ::selection{background:var(--gold2); color:var(--navy);}
 ::-webkit-scrollbar{width:10px; height:10px;}
-::-webkit-scrollbar-thumb{background:#CDBF9A; border-radius:8px;}
+::-webkit-scrollbar-thumb{background:#C4CCDD; border-radius:8px;}
+
+/* ---------- Lienzo ---------- */
 [data-testid="stAppViewContainer"]{
-  background: radial-gradient(1100px 480px at 90% -8%, rgba(201,162,75,.12), transparent 60%), var(--ivory) !important;
+  background:
+    radial-gradient(900px 420px at 100% -5%, rgba(201,162,75,.13), transparent 60%),
+    radial-gradient(700px 400px at -5% 40%, rgba(47,109,181,.08), transparent 60%),
+    var(--canvas) !important;
 }
-[data-testid="stAppViewContainer"]{background-color:var(--ivory) !important;}
-[data-testid="stHeader"]{background:transparent !important;}
-.block-container{padding-top:2.2rem !important; max-width:1280px;}
+[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"]{display:none !important;}
+[data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"], [data-testid="collapsedControl"]{display:none !important;}
+.block-container{padding:1.1rem 2rem 3rem 2rem !important; max-width:1360px;}
 
 /* ---------- Animaciones ---------- */
-@keyframes fadeUp{from{opacity:0; transform:translateY(14px);} to{opacity:1; transform:none;}}
+@keyframes fadeUp{from{opacity:0; transform:translateY(16px);} to{opacity:1; transform:none;}}
 @keyframes slideIn{from{opacity:0; transform:translateX(-18px);} to{opacity:1; transform:none;}}
-@keyframes floaty{0%,100%{transform:translateY(0);} 50%{transform:translateY(-7px);}}
-@keyframes pulseRed{0%,100%{box-shadow:0 0 0 0 rgba(123,30,46,.35);} 50%{box-shadow:0 0 0 9px rgba(123,30,46,0);}}
-@keyframes shimmer{0%{background-position:-200% 0;} 100%{background-position:200% 0;}}
+@keyframes floaty{0%,100%{transform:translateY(0);} 50%{transform:translateY(-8px);}}
+@keyframes drift{0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(30px,-18px) scale(1.12);}}
+@keyframes pulseRed{0%,100%{box-shadow:0 0 0 0 rgba(138,31,53,.35);} 50%{box-shadow:0 0 0 9px rgba(138,31,53,0);}}
+@keyframes grow{from{transform:scaleX(0);} to{transform:scaleX(1);}}
+@keyframes gradientMove{0%{background-position:0% 50%;} 50%{background-position:100% 50%;} 100%{background-position:0% 50%;}}
 @media (prefers-reduced-motion: reduce){*{animation:none !important; transition:none !important;}}
 
 /* ---------- Tipografía ---------- */
-h1,h2,h3,h4,h5{font-family:'Playfair Display', Georgia, serif !important; color:var(--navy) !important; letter-spacing:-.2px;}
+h1,h2,h3,h4,h5{font-family:'Fraunces', Georgia, serif !important; color:var(--navy) !important; letter-spacing:-.3px;}
 [data-testid="stMarkdownContainer"] h1{
-  font-size:2.1rem !important; font-weight:700 !important; padding:0 0 .5rem 0 !important;
-  animation:slideIn .5s ease both;
+  font-size:2rem !important; font-weight:700 !important; padding:.4rem 0 .2rem 0 !important; animation:slideIn .5s ease both;
 }
 [data-testid="stMarkdownContainer"] h1::after{
-  content:''; display:block; width:68px; height:4px; margin-top:10px; border-radius:4px;
+  content:''; display:block; width:56px; height:4px; margin-top:8px; border-radius:4px;
   background:linear-gradient(90deg,var(--gold),var(--gold2));
 }
+.page-sub{color:var(--muted) !important; font-size:14px; margin:2px 0 14px 0;}
 [data-testid="stMarkdownContainer"] p{color:var(--ink);}
 [data-testid="stWidgetLabel"] p, label p{color:var(--navy) !important; font-weight:600 !important; font-size:13px !important;}
+.card-title{font-size:12px !important; font-weight:800 !important; letter-spacing:1.3px; text-transform:uppercase; color:var(--muted) !important; margin:0 0 10px 0 !important;}
 
-/* ---------- Tarjetas ---------- */
-.module-card{
-  background:var(--paper); border:1px solid var(--line); border-radius:14px; padding:18px 22px; margin-bottom:14px;
-  box-shadow:0 1px 2px rgba(11,31,58,.04), 0 10px 26px -14px rgba(11,31,58,.16);
-  transition:transform .25s ease, box-shadow .25s ease; animation:fadeUp .5s ease both;
+/* ---------- Barra superior (centro de mando) ---------- */
+.st-key-topbar{
+  position:relative; overflow:hidden; border-radius:24px; padding:14px 22px; margin-bottom:12px;
+  background:
+    radial-gradient(520px 200px at 8% -30%, rgba(201,162,75,.45), transparent 60%),
+    radial-gradient(420px 220px at 95% 130%, rgba(47,109,181,.5), transparent 60%),
+    linear-gradient(135deg,#0A1628 0%,#13294B 100%);
+  box-shadow:0 28px 60px -28px rgba(10,22,40,.85); animation:fadeUp .5s ease both;
 }
-.module-card:hover{transform:translateY(-2px); box-shadow:0 1px 2px rgba(11,31,58,.05), 0 18px 34px -16px rgba(11,31,58,.26);}
+.marca{display:flex; align-items:center; gap:12px;}
+.marca .sello{width:44px; height:44px; border-radius:14px; background:linear-gradient(135deg,var(--gold),var(--gold2));
+  display:flex; align-items:center; justify-content:center; font-size:23px; box-shadow:0 10px 24px -8px rgba(201,162,75,.9); animation:floaty 5s ease-in-out infinite;}
+.marca .nombre{font-family:'Fraunces',Georgia,serif; font-size:20px; font-weight:700; color:#FFFFFF !important; line-height:1.05;}
+.marca .lema{font-size:10px; letter-spacing:2px; color:var(--gold2) !important; text-transform:uppercase; font-weight:700;}
+.st-key-topbar [data-baseweb="base-input"], .st-key-topbar [data-baseweb="input"], .st-key-topbar [data-baseweb="input"] > div, .st-key-topbar [data-testid="stTextInputRootElement"]{
+  background:rgba(255,255,255,.10) !important; border-color:rgba(255,255,255,.22) !important; border-radius:14px !important;}
+.st-key-topbar input{background:rgba(255,255,255,.10) !important; color:#FFFFFF !important; -webkit-text-fill-color:#FFFFFF !important; border:1px solid rgba(255,255,255,.18) !important;}
+.st-key-topbar div[data-baseweb="input"] > div{background:rgba(255,255,255,.10) !important; border-color:rgba(255,255,255,.18) !important;}
+.st-key-topbar input::placeholder{color:rgba(255,255,255,.6) !important; -webkit-text-fill-color:rgba(255,255,255,.6) !important;}
+.st-key-topbar input:focus{border-color:var(--gold2) !important; box-shadow:0 0 0 3px rgba(230,200,115,.28) !important;}
+.st-key-topbar button{background:rgba(255,255,255,.10) !important; color:#FFFFFF !important; border:1px solid rgba(255,255,255,.2) !important; backdrop-filter:blur(6px);}
+.st-key-topbar button:hover{background:linear-gradient(135deg,var(--gold),var(--gold2)) !important; color:var(--navy) !important; border-color:var(--gold) !important;}
+.st-key-topbar button p{color:inherit !important;}
+
+/* ---------- Navegación ---------- */
+.st-key-nav_grupos{background:var(--paper); border:1px solid var(--line); border-radius:18px; padding:6px; margin-bottom:6px;
+  box-shadow:0 12px 30px -20px rgba(10,22,40,.4); animation:fadeUp .55s ease both;}
+.st-key-nav_grupos [data-testid="stHorizontalBlock"], .st-key-nav_sub [data-testid="stHorizontalBlock"]{gap:.35rem !important; flex-wrap:wrap !important;}
+.st-key-nav_grupos [data-testid="stColumn"], .st-key-nav_sub [data-testid="stColumn"], .st-key-nav_grupos [data-testid="column"], .st-key-nav_sub [data-testid="column"]{min-width:0 !important; flex:1 1 auto !important; width:auto !important;}
+.st-key-nav_grupos div.stButton > button{background:transparent !important; color:var(--muted) !important; border:1px solid transparent !important;
+  border-radius:13px !important; font-weight:700 !important; box-shadow:none !important; padding:.55rem .6rem !important;}
+.st-key-nav_grupos div.stButton > button p{color:inherit !important;}
+.st-key-nav_grupos div.stButton > button:hover{background:rgba(201,162,75,.14) !important; color:var(--navy) !important; transform:none !important; box-shadow:none !important; border-color:rgba(201,162,75,.4) !important;}
+.st-key-nav_grupos div.stButton > button[kind="primary"], .st-key-nav_grupos div.stButton > button[data-testid="stBaseButton-primary"]{
+  background:linear-gradient(135deg,var(--navy),var(--navy3)) !important; color:#FFFFFF !important;
+  box-shadow:0 12px 24px -12px rgba(10,22,40,.8) !important;}
+.st-key-nav_grupos div.stButton > button[kind="primary"]:hover, .st-key-nav_grupos div.stButton > button[data-testid="stBaseButton-primary"]:hover{color:#FFFFFF !important;}
+.st-key-nav_sub{padding:2px 4px 10px 4px; animation:fadeUp .6s ease both;}
+.st-key-nav_sub div.stButton > button{background:transparent !important; color:var(--muted) !important; border:none !important; border-bottom:3px solid transparent !important;
+  border-radius:0 !important; font-weight:600 !important; box-shadow:none !important; padding:.35rem .5rem !important; font-size:14px !important;}
+.st-key-nav_sub div.stButton > button p{color:inherit !important;}
+.st-key-nav_sub div.stButton > button:hover{color:var(--navy) !important; background:transparent !important; transform:none !important; box-shadow:none !important; border-bottom-color:rgba(201,162,75,.6) !important;}
+.st-key-nav_sub div.stButton > button[kind="primary"], .st-key-nav_sub div.stButton > button[data-testid="stBaseButton-primary"]{
+  color:var(--navy) !important; border-bottom-color:var(--gold) !important; font-weight:800 !important; background:transparent !important;}
+
+/* ---------- Tarjetas (contenedores con borde) ---------- */
+[data-testid="stVerticalBlockBorderWrapper"]{
+  background:var(--paper); border:1px solid var(--line) !important; border-radius:var(--radius) !important;
+  box-shadow:0 1px 2px rgba(10,22,40,.04), 0 18px 40px -26px rgba(10,22,40,.35);
+  animation:fadeUp .55s ease both; transition:box-shadow .25s ease, transform .25s ease;
+}
+[data-testid="stVerticalBlockBorderWrapper"]:hover{box-shadow:0 1px 2px rgba(10,22,40,.05), 0 26px 50px -26px rgba(10,22,40,.45);}
+[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stVerticalBlockBorderWrapper"]{box-shadow:none; animation:none;}
+
+/* ---------- Héroe del centro de mando ---------- */
+.hero{position:relative; overflow:hidden; border-radius:26px; padding:30px 34px; margin:6px 0 16px 0;
+  background:linear-gradient(120deg,#0A1628,#13294B,#1B3A6B,#13294B); background-size:300% 300%; animation:gradientMove 14s ease infinite;
+  box-shadow:0 30px 60px -30px rgba(10,22,40,.8);}
+.hero::before,.hero::after{content:''; position:absolute; border-radius:50%; filter:blur(8px); animation:drift 11s ease-in-out infinite;}
+.hero::before{width:260px; height:260px; right:-60px; top:-90px; background:radial-gradient(circle,rgba(230,200,115,.55),transparent 65%);}
+.hero::after{width:300px; height:300px; right:22%; bottom:-170px; background:radial-gradient(circle,rgba(47,109,181,.55),transparent 65%); animation-delay:-5s;}
+.hero .kick{color:var(--gold2) !important; font-size:12px; font-weight:800; letter-spacing:2px; text-transform:uppercase; margin:0 0 6px 0; position:relative; z-index:1;}
+.hero .titulo{font-family:'Fraunces',Georgia,serif; color:#FFFFFF !important; font-size:2.3rem; font-weight:700; margin:0; position:relative; z-index:1; line-height:1.1;}
+.hero .sub{color:#C9D4E8 !important; font-size:15px; margin:10px 0 0 0; position:relative; z-index:1; max-width:640px;}
+.hero .chips{display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; position:relative; z-index:1;}
+.hero .chip2{background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.22); color:#FFFFFF !important; border-radius:30px; padding:5px 14px; font-size:12.5px; font-weight:600; backdrop-filter:blur(6px);}
+
+/* ---------- KPIs ---------- */
+.kpi{position:relative; background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); padding:18px 20px 16px 22px;
+  overflow:hidden; box-shadow:0 18px 40px -28px rgba(10,22,40,.4); transition:transform .25s ease, box-shadow .25s ease; animation:fadeUp .6s ease both; margin-bottom:10px;}
+.kpi::after{content:''; position:absolute; right:-30px; top:-30px; width:110px; height:110px; border-radius:50%; background:var(--accent-bg, rgba(201,162,75,.15));}
+.kpi:hover{transform:translateY(-5px); box-shadow:0 30px 50px -26px rgba(10,22,40,.5);}
+.kpi .ico{font-size:22px; width:42px; height:42px; border-radius:13px; display:flex; align-items:center; justify-content:center;
+  background:var(--accent-bg, rgba(201,162,75,.15)); margin-bottom:12px; position:relative; z-index:1;}
+.kpi .lbl{font-size:11px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase; color:var(--muted) !important; margin:0; position:relative; z-index:1;}
+.kpi .val{font-family:'Fraunces',Georgia,serif; font-size:2.1rem; font-weight:700; color:var(--navy) !important; margin:2px 0 0 0; line-height:1.15; position:relative; z-index:1;}
+.kpi .bar{height:5px; border-radius:6px; background:var(--line); margin-top:12px; overflow:hidden;}
+.kpi .bar i{display:block; height:100%; background:var(--accent,var(--gold)); transform-origin:left; animation:grow 1.1s ease both;}
+
+/* ---------- Línea de tiempo ---------- */
+.tl{position:relative; margin:4px 0 6px 6px;}
+.tl::before{content:''; position:absolute; left:6px; top:6px; bottom:6px; width:2px; background:linear-gradient(var(--gold),rgba(201,162,75,.1));}
+.tl-item{position:relative; padding:0 0 14px 28px; animation:fadeUp .5s ease both;}
+.tl-dot{position:absolute; left:0; top:4px; width:14px; height:14px; border-radius:50%; background:var(--c,var(--gold)); border:3px solid #FFFFFF; box-shadow:0 0 0 2px var(--c,var(--gold));}
+.tl-item b{display:block; font-size:14px; color:var(--navy) !important;}
+.tl-item span{display:block; font-size:12.5px; color:var(--muted) !important;}
+.tl-item em{display:inline-block; font-style:normal; font-size:11px; font-weight:800; letter-spacing:.6px; text-transform:uppercase; color:var(--c,var(--gold-dark)) !important; margin-top:2px;}
+.vacio{text-align:center; color:var(--muted) !important; padding:18px 6px; font-size:14px;}
+
+/* ---------- Pipeline, actividad, tareas ---------- */
+.pipe{display:flex; height:14px; border-radius:10px; overflow:hidden; background:var(--line); margin:4px 0 12px 0;}
+.pipe span{display:block; transform-origin:left; animation:grow 1s ease both;}
+.pipe-row{display:flex; align-items:center; justify-content:space-between; font-size:13px; padding:4px 0; border-bottom:1px dashed var(--line);}
+.pipe-row i{display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px; background:var(--c);}
+.pipe-row b{color:var(--navy) !important;}
+.act{padding:7px 0; border-bottom:1px dashed var(--line); font-size:13px;}
+.act em{display:block; font-style:normal; font-size:11px; color:var(--muted) !important;}
+.task{padding:6px 0; font-size:13.5px;}
+.task em{display:block; font-style:normal; font-size:11px; color:var(--muted) !important;}
+.alerta-item{display:flex; gap:10px; align-items:flex-start; padding:8px 10px; border-radius:12px; margin-bottom:6px; background:var(--bg,#F5F7FB); border-left:4px solid var(--c,var(--gold));}
+.alerta-item b{display:block; font-size:13px; color:var(--navy) !important;}
+.alerta-item span{font-size:12px; color:var(--muted) !important;}
+
+/* ---------- Tablero Kanban ---------- */
+.kb-head{display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-radius:14px; margin-bottom:10px;
+  background:linear-gradient(135deg,var(--c),color-mix(in srgb,var(--c) 70%,#000)); color:#FFFFFF !important; font-weight:800; font-size:13px; letter-spacing:.4px;
+  box-shadow:0 14px 26px -16px var(--c);}
+.kb-head span{background:rgba(255,255,255,.25); border-radius:20px; padding:1px 10px; font-size:12px;}
+.kb-card{background:var(--paper); border:1px solid var(--line); border-left:5px solid var(--c); border-radius:14px; padding:11px 13px; margin-bottom:4px;
+  box-shadow:0 14px 28px -22px rgba(10,22,40,.5); transition:transform .2s ease, box-shadow .2s ease; animation:fadeUp .45s ease both;}
+.kb-card:hover{transform:translateY(-3px); box-shadow:0 22px 34px -22px rgba(10,22,40,.6);}
+.kb-card b{display:block; font-size:13.5px; color:var(--navy) !important; line-height:1.25;}
+.kb-card span{display:block; font-size:11.5px; color:var(--muted) !important; margin-top:2px;}
+.kb-card .pill{display:inline-block; margin:6px 6px 0 0; padding:2px 9px; border-radius:20px; font-size:10.5px; font-weight:700; background:#EEF1F7; color:var(--navy) !important;}
+.kb-card .pill.warn{background:rgba(138,31,53,.12); color:var(--burgundy) !important;}
+.kb-vacio{border:2px dashed var(--line); border-radius:14px; padding:18px; text-align:center; color:var(--muted) !important; font-size:12.5px;}
+
+/* ---------- Ficha 360 ---------- */
+.ficha-head{display:flex; align-items:center; gap:18px; padding:4px 0;}
+.avatar{width:72px; height:72px; border-radius:22px; background:linear-gradient(135deg,var(--navy),var(--navy3)); color:var(--gold2) !important;
+  display:flex; align-items:center; justify-content:center; font-family:'Fraunces',Georgia,serif; font-size:28px; font-weight:700; box-shadow:0 18px 30px -16px rgba(10,22,40,.8), 0 0 0 3px rgba(201,162,75,.5);}
+.ficha-head .nom{font-family:'Fraunces',Georgia,serif; font-size:1.7rem; font-weight:700; color:var(--navy) !important; margin:0; line-height:1.1;}
+.ficha-head .det{color:var(--muted) !important; font-size:13px; margin:4px 0 0 0;}
+.stepper{display:flex; align-items:center; margin:14px 0 18px 0;}
+.stepper .s{flex:1; text-align:center; position:relative; font-size:11px; font-weight:700; color:var(--muted) !important;}
+.stepper .s::before{content:''; position:absolute; top:13px; left:-50%; width:100%; height:3px; background:var(--line); z-index:0;}
+.stepper .s:first-child::before{display:none;}
+.stepper .s i{position:relative; z-index:1; display:flex; align-items:center; justify-content:center; width:28px; height:28px; margin:0 auto 5px auto; border-radius:50%;
+  background:#FFFFFF; border:3px solid var(--line); font-style:normal; font-size:13px;}
+.stepper .s.ok i{background:var(--emerald); border-color:var(--emerald); color:#FFFFFF;}
+.stepper .s.ok::before{background:var(--emerald);}
+.stepper .s.now i{background:var(--navy); border-color:var(--gold); color:var(--gold2); box-shadow:0 0 0 5px rgba(201,162,75,.22);}
+.stepper .s.now{color:var(--navy) !important;}
+.chip-info{display:inline-block; padding:4px 12px; border-radius:20px; background:#EEF1F7; font-size:12px; font-weight:700; color:var(--navy) !important; margin:0 6px 6px 0;}
+.chip-info.rojo{background:rgba(138,31,53,.12); color:var(--burgundy) !important;}
+.chip-info.verde{background:rgba(31,122,92,.14); color:var(--emerald) !important;}
+
+/* ---------- Calendario ---------- */
+.cal-titulo{font-family:'Fraunces',Georgia,serif; font-size:1.5rem; font-weight:700; color:var(--navy) !important; text-align:center; margin:6px 0;}
+.cal{display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:6px; margin:8px 0 14px 0;}
+.cal-h{text-align:center; font-size:11px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase; color:var(--muted) !important; padding:4px 0;}
+.cal-d{min-height:86px; background:var(--paper); border:1px solid var(--line); border-radius:14px; padding:6px 7px; animation:fadeUp .5s ease both; transition:transform .2s ease, box-shadow .2s ease;}
+.cal-d:hover{transform:translateY(-3px); box-shadow:0 16px 28px -20px rgba(10,22,40,.6);}
+.cal-d.fuera{background:transparent; border-color:transparent; box-shadow:none;}
+.cal-d.fuera:hover{transform:none; box-shadow:none;}
+.cal-d .n{display:inline-block; font-size:12px; font-weight:800; color:var(--navy) !important; margin-bottom:3px;}
+.cal-d.hoy{border:2px solid var(--gold); background:linear-gradient(180deg,#FFFBF0,#FFFFFF);}
+.cal-d.hoy .n{background:var(--gold); color:var(--navy) !important; border-radius:20px; padding:0 8px;}
+.chip{font-size:10.5px; font-weight:600; padding:2px 6px; margin-top:3px; border-radius:7px; background:color-mix(in srgb,var(--c) 15%,#FFFFFF); color:var(--navy) !important;
+  border-left:3px solid var(--c); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.mas{font-size:10px; color:var(--muted) !important; margin-top:3px; font-weight:700;}
+
+/* ---------- Simulador ---------- */
+.sim-res{background:linear-gradient(135deg,var(--navy),var(--navy3)); border-radius:var(--radius); padding:22px 26px; color:#FFFFFF; box-shadow:0 28px 50px -28px rgba(10,22,40,.9);}
+.sim-res .big{font-family:'Fraunces',Georgia,serif; font-size:2.6rem; font-weight:700; color:var(--gold2) !important; margin:0; line-height:1.1;}
+.sim-res p{color:#C9D4E8 !important; margin:4px 0 0 0; font-size:13px;}
+.aviso{background:#FFF8E6; border:1px solid #F0DDA6; border-left:5px solid var(--gold); border-radius:14px; padding:12px 16px; font-size:12.5px; color:#5B4A12 !important;}
+
+/* ---------- Formularios, tabs, expanders, tablas ---------- */
+[data-testid="stForm"]{background:var(--paper); border:1px solid var(--line) !important; border-top:4px solid var(--gold) !important;
+  border-radius:var(--radius) !important; padding:22px !important; animation:fadeUp .5s ease both; box-shadow:0 18px 40px -28px rgba(10,22,40,.35);}
+input, textarea, div[data-baseweb="select"] > div, div[data-baseweb="input"] > div, div[data-baseweb="textarea"] > div{
+  background-color:#FFFFFF !important; color:var(--ink) !important; -webkit-text-fill-color:var(--ink) !important;
+  border-color:#D3DAE8 !important; border-radius:12px !important;}
+input:focus, textarea:focus{border-color:var(--gold) !important; box-shadow:0 0 0 3px rgba(201,162,75,.28) !important;}
+button[data-baseweb="tab"]{font-weight:700; color:var(--muted);}
+button[data-baseweb="tab"][aria-selected="true"]{color:var(--navy) !important;}
+[data-baseweb="tab-highlight"]{background:var(--gold) !important; height:3px !important;}
+[data-testid="stExpander"]{border:1px solid var(--line) !important; border-radius:16px !important; background:var(--paper); overflow:hidden;}
+[data-testid="stExpander"] summary:hover{background:rgba(201,162,75,.10);}
+[data-testid="stAlert"]{border-radius:14px !important;}
+[data-testid="stDataFrame"]{border-radius:14px; overflow:hidden; box-shadow:0 14px 28px -22px rgba(10,22,40,.5);}
+[data-testid="stMetric"]{background:var(--paper); border:1px solid var(--line); border-radius:14px; padding:12px 16px;}
+[data-testid="stPopoverBody"]{border-radius:18px !important;}
+
+/* ---------- Botones (área principal) ---------- */
+div.stButton > button, div[data-testid="stFormSubmitButton"] > button, div.stDownloadButton > button, a[data-testid^="stBaseLinkButton"]{
+  background:linear-gradient(135deg,var(--navy),var(--navy3)) !important; color:#FFFFFF !important;
+  border:1px solid var(--navy) !important; border-radius:12px !important; font-weight:700 !important; letter-spacing:.2px; padding:.5rem 1rem !important;
+  transition:transform .2s ease, box-shadow .2s ease, background .2s ease !important;}
+div.stButton > button p, div[data-testid="stFormSubmitButton"] > button p, div.stDownloadButton > button p{color:inherit !important;}
+div.stButton > button:hover, div[data-testid="stFormSubmitButton"] > button:hover, div.stDownloadButton > button:hover, a[data-testid^="stBaseLinkButton"]:hover{
+  background:linear-gradient(135deg,var(--gold),var(--gold2)) !important; color:var(--navy) !important; border-color:var(--gold) !important;
+  transform:translateY(-2px); box-shadow:0 14px 26px -12px rgba(201,162,75,.8) !important;}
+div.stButton > button:active{transform:translateY(0) scale(.98);}
+a[data-testid^="stBaseLinkButton"] p, a[data-testid^="stBaseLinkButton"] span{color:inherit !important;}
+a[data-testid^="stBaseLinkButton"]{text-decoration:none !important; text-align:center;}
+/* botones pequeños de tarjetas (kanban, tareas) */
+[class*="st-key-mini"] button{padding:.2rem .4rem !important; font-size:13px !important; border-radius:10px !important;}
+
+/* ---------- Login ---------- */
+.login-hero{text-align:center; padding:6px 0 4px 0;}
+.login-hero .seal{width:90px; height:90px; margin:0 auto 16px auto; border-radius:28px; font-size:46px;
+  background:linear-gradient(135deg,var(--gold),var(--gold2)); display:flex; align-items:center; justify-content:center;
+  box-shadow:0 26px 50px -18px rgba(201,162,75,.9); animation:floaty 4s ease-in-out infinite;}
+.login-hero h1::after{margin-left:auto; margin-right:auto;}
+.login-hero p{font-size:13px; margin:8px 0 18px 0;}
+
+/* ---------- Compatibilidad con módulos anteriores ---------- */
+.module-card{background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); padding:18px 22px; margin-bottom:14px;
+  box-shadow:0 18px 40px -28px rgba(10,22,40,.35); animation:fadeUp .5s ease both;}
 .module-card h3,.module-card h4{color:var(--navy) !important; margin:0 0 6px 0;}
 .module-card p,.module-card span,.module-card b{color:var(--ink) !important;}
 .module-card-gold{border-top:4px solid var(--gold) !important;}
 .module-card-blue{border-top:4px solid var(--sky) !important;}
 .module-card-green{border-top:4px solid var(--emerald) !important;}
-/* Tarjetas que solo traen un título: se muestran como encabezado de sección */
 .module-card:has(> h3:only-child), .module-card:has(> h4:only-child){
-  background:transparent; border:none; border-left:4px solid var(--gold); border-radius:0; box-shadow:none;
-  padding:2px 0 2px 12px; margin:14px 0 6px 0; animation:slideIn .45s ease both;
-}
-.module-card:has(> h3:only-child):hover, .module-card:has(> h4:only-child):hover{transform:none; box-shadow:none;}
-/* Contenedores vacíos que dejaba el HTML antiguo: se ocultan */
-[data-testid="stElementContainer"]:has(.module-card:not(:has(*))),
-.element-container:has(.module-card:not(:has(*))),
+  background:transparent; border:none; border-left:4px solid var(--gold); border-radius:0; box-shadow:none; padding:2px 0 2px 12px; margin:14px 0 6px 0;}
+[data-testid="stElementContainer"]:has(.module-card:not(:has(*))), .element-container:has(.module-card:not(:has(*))),
 [data-testid="stElementContainer"]:has([data-testid="stMarkdownContainer"]:empty){display:none !important;}
-
-.kpi{
-  position:relative; background:var(--paper); border:1px solid var(--line); border-radius:16px; padding:18px 20px 16px 24px;
-  overflow:hidden; box-shadow:0 10px 26px -16px rgba(11,31,58,.25); transition:transform .25s ease, box-shadow .25s ease;
-  animation:fadeUp .6s ease both; margin-bottom:10px;
-}
-.kpi::before{content:''; position:absolute; left:0; top:0; bottom:0; width:6px; background:var(--accent,var(--gold));}
-.kpi:hover{transform:translateY(-4px); box-shadow:0 22px 40px -18px rgba(11,31,58,.38);}
-.kpi .ico{font-size:24px; width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center;
-  background:var(--accent-bg, rgba(201,162,75,.15)); margin-bottom:10px;}
-.kpi .lbl{font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--muted) !important; margin:0;}
-.kpi .val{font-family:'Playfair Display',Georgia,serif; font-size:2rem; font-weight:700; color:var(--navy) !important; margin:2px 0 0 0; line-height:1.15;}
-.law-card{
-  background:linear-gradient(135deg,var(--navy) 0%,var(--navy2) 100%); border-radius:16px; padding:22px 26px;
-  box-shadow:0 20px 40px -20px rgba(11,31,58,.55); animation:fadeUp .6s ease both; margin-bottom:14px;
-  border-top:4px solid var(--gold);
-}
+.law-card{background:linear-gradient(135deg,var(--navy),var(--navy3)); border-radius:var(--radius); padding:22px 26px; border-top:4px solid var(--gold); margin-bottom:14px;}
 .law-card h3{color:var(--gold2) !important; font-size:1.3rem; margin:0 0 10px 0;}
 .law-card p, .law-card b{color:#E8ECF3 !important; font-size:14px; line-height:1.75; margin:0;}
-
-/* ---------- Formularios, tabs, expanders ---------- */
-[data-testid="stForm"]{
-  background:var(--paper); border:1px solid var(--line) !important; border-top:4px solid var(--gold) !important;
-  border-radius:14px !important; padding:22px !important; animation:fadeUp .5s ease both;
-  box-shadow:0 10px 26px -16px rgba(11,31,58,.2);
-}
-input, textarea, div[data-baseweb="select"] > div, div[data-baseweb="input"] > div, div[data-baseweb="textarea"] > div{
-  background-color:#FFFFFF !important; color:var(--ink) !important; -webkit-text-fill-color:var(--ink) !important;
-  border-color:#D5CDBB !important; border-radius:10px !important;
-}
-input:focus, textarea:focus{border-color:var(--gold) !important; box-shadow:0 0 0 3px rgba(201,162,75,.28) !important;}
-button[data-baseweb="tab"]{font-weight:600; color:var(--muted);}
-button[data-baseweb="tab"][aria-selected="true"]{color:var(--navy) !important;}
-[data-baseweb="tab-highlight"]{background:var(--gold) !important; height:3px !important;}
-[data-testid="stExpander"]{border:1px solid var(--line) !important; border-radius:12px !important; background:var(--paper); overflow:hidden;}
-[data-testid="stExpander"] summary:hover{background:rgba(201,162,75,.10);}
-[data-testid="stAlert"]{border-radius:12px !important;}
-[data-testid="stDataFrame"]{border-radius:12px; overflow:hidden; box-shadow:0 8px 22px -14px rgba(11,31,58,.3);}
-[data-testid="stMetric"]{background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:12px 16px;}
-
-/* ---------- Botones (área principal) ---------- */
-div.stButton > button, div[data-testid="stFormSubmitButton"] > button, div.stDownloadButton > button,
-a[data-testid^="stBaseLinkButton"]{
-  background:linear-gradient(135deg,var(--navy),var(--navy2)) !important; color:#FFFFFF !important;
-  border:1px solid var(--navy) !important; border-radius:10px !important; font-weight:600 !important;
-  letter-spacing:.2px; padding:.5rem 1rem !important;
-  transition:transform .2s ease, box-shadow .2s ease, background .2s ease !important;
-}
-div.stButton > button p, div[data-testid="stFormSubmitButton"] > button p, div.stDownloadButton > button p{color:inherit !important;}
-div.stButton > button:hover, div[data-testid="stFormSubmitButton"] > button:hover, div.stDownloadButton > button:hover,
-a[data-testid^="stBaseLinkButton"]:hover{
-  background:linear-gradient(135deg,var(--gold),var(--gold2)) !important; color:var(--navy) !important;
-  border-color:var(--gold) !important; transform:translateY(-2px); box-shadow:0 12px 24px -10px rgba(201,162,75,.7) !important;
-}
-div.stButton > button:active{transform:translateY(0) scale(.98);}
-
-/* ---------- Barra lateral ---------- */
-[data-testid="stSidebar"]{
-  background:linear-gradient(180deg,#0B1F3A 0%,#081528 100%) !important; border-right:1px solid rgba(201,162,75,.28) !important;
-}
-[data-testid="stSidebar"] p, [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3,
-[data-testid="stSidebar"] span, [data-testid="stSidebar"] label, [data-testid="stSidebar"] div[data-testid="stMarkdownContainer"]{color:#E8ECF3 !important;}
-[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p{color:#E8ECF3 !important;}
-.brand{display:flex; align-items:center; gap:10px; padding:4px 4px 14px 4px; animation:slideIn .5s ease both;}
-.brand .seal{width:38px; height:38px; border-radius:11px; background:linear-gradient(135deg,var(--gold),var(--gold2));
-  display:flex; align-items:center; justify-content:center; font-size:20px; box-shadow:0 8px 18px -8px rgba(201,162,75,.8);}
-.brand .name{font-family:'Playfair Display',Georgia,serif; font-size:19px; font-weight:700; color:#FFFFFF !important; line-height:1.1;}
-.brand .sub{font-size:10px; letter-spacing:1.6px; color:var(--gold2) !important; text-transform:uppercase;}
-.nav-label{color:#8FA3C0 !important; font-size:10.5px !important; font-weight:700 !important; letter-spacing:1.8px; text-transform:uppercase; margin:18px 0 6px 6px !important;}
-.nav-hr{border:none; height:1px; background:linear-gradient(90deg,transparent,rgba(201,162,75,.55),transparent); margin:10px 0;}
-.rol-badge{display:inline-block; padding:2px 10px; border-radius:20px; font-size:10.5px; font-weight:700; letter-spacing:.6px;
-  background:rgba(201,162,75,.16); border:1px solid rgba(201,162,75,.5); color:var(--gold2) !important;}
-[data-testid="stSidebar"] div.stButton > button{
-  width:100%; justify-content:flex-start !important; text-align:left !important; background:transparent !important;
-  color:#DCE3EE !important; border:1px solid transparent !important; border-radius:10px !important;
-  padding:.5rem .8rem !important; font-weight:500 !important; box-shadow:none !important; transition:all .2s ease !important;
-}
-[data-testid="stSidebar"] div.stButton > button > div{justify-content:flex-start !important; width:100%;}
-[data-testid="stSidebar"] div.stButton > button p{color:inherit !important; text-align:left !important;}
-[data-testid="stSidebar"] div.stButton > button:hover{
-  background:rgba(201,162,75,.14) !important; border-color:rgba(201,162,75,.5) !important; color:#FFFFFF !important;
-  transform:translateX(5px) !important; box-shadow:none !important;
-}
-[data-testid="stSidebar"] div.stButton > button[kind="primary"],
-[data-testid="stSidebar"] div.stButton > button[data-testid="stBaseButton-primary"]{
-  background:linear-gradient(135deg,var(--gold),var(--gold2)) !important; color:var(--navy) !important; font-weight:700 !important;
-  box-shadow:0 10px 20px -10px rgba(201,162,75,.8) !important;
-}
-[data-testid="stSidebar"] div.stButton > button[kind="primary"]:hover,
-[data-testid="stSidebar"] div.stButton > button[data-testid="stBaseButton-primary"]:hover{color:var(--navy) !important; transform:translateX(3px) !important;}
-[data-testid="stSidebar"] .st-key-b_logout button{border-color:rgba(255,255,255,.18) !important; margin-top:6px;}
-
-/* ---------- Login ---------- */
-.login-hero{text-align:center; padding:6px 0 4px 0;}
-.login-hero .seal{width:82px; height:82px; margin:0 auto 14px auto; border-radius:24px; font-size:42px;
-  background:linear-gradient(135deg,var(--navy),var(--navy2)); display:flex; align-items:center; justify-content:center;
-  box-shadow:0 20px 40px -18px rgba(11,31,58,.7), 0 0 0 4px rgba(201,162,75,.45); animation:floaty 4s ease-in-out infinite;}
-.login-hero h1::after{margin-left:auto; margin-right:auto;}
-.login-hero p{color:var(--muted) !important; font-size:13px; margin:8px 0 18px 0;}
-
-/* ---------- Vencimientos y línea de tiempo ---------- */
-.venc{border-left:5px solid var(--c,#10B981); padding:12px 16px; background:#FFFFFF; margin-bottom:8px; border-radius:10px;
-  box-shadow:0 8px 20px -14px rgba(11,31,58,.3); color:var(--ink); animation:fadeUp .45s ease both; transition:transform .2s ease;}
+.venc{border-left:5px solid var(--c,#10B981); padding:12px 16px; background:#FFFFFF; margin-bottom:8px; border-radius:12px;
+  box-shadow:0 12px 24px -18px rgba(10,22,40,.4); color:var(--ink); animation:fadeUp .45s ease both; transition:transform .2s ease;}
 .venc:hover{transform:translateX(4px);}
 .venc-peligro{animation:fadeUp .45s ease both, pulseRed 2s ease-in-out infinite;}
-.timeline{display:flex; justify-content:space-between; align-items:center; margin:20px 0; position:relative;}
-.timeline::before{content:''; position:absolute; top:50%; left:0; right:0; height:2px; background:var(--line); z-index:1;}
-.step{position:relative; z-index:2; background:var(--ivory); padding:6px 12px; border-radius:20px; border:2px solid var(--line); color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase;}
-.step.active{border-color:var(--gold); color:var(--navy); background:#FFFFFF;}
-.step.completed{border-color:var(--emerald); color:#FFFFFF; background:var(--emerald);}
-.boveda-sub{color:var(--gold-dark) !important; font-weight:700; margin:6px 0 2px 0; font-size:13px; letter-spacing:.4px;}
+.boveda-sub{color:var(--gold-dark) !important; font-weight:800; margin:6px 0 2px 0; font-size:13px; letter-spacing:.4px;}
 .archivo{font-size:12.5px; color:var(--ink);}
+.nav-hr{border:none; height:1px; background:linear-gradient(90deg,transparent,#C4CCDD,transparent); margin:14px 0;}
 
-@media (max-width:768px){
-  .block-container{padding:1rem .8rem !important;}
-  [data-testid="stMarkdownContainer"] h1{font-size:1.6rem !important;}
-  .kpi .val{font-size:1.6rem;}
+@media (max-width:900px){
+  .st-key-topbar [data-testid="stHorizontalBlock"]{flex-wrap:wrap !important; gap:.5rem !important;}
+  .st-key-topbar [data-testid="stColumn"]{min-width:44% !important; flex:1 1 44% !important;}
+  .st-key-topbar [data-testid="stColumn"]:nth-child(-n+2){min-width:100% !important; flex:1 1 100% !important;}
+  .block-container{padding:.8rem .7rem 3rem .7rem !important;}
+  [data-testid="stMarkdownContainer"] h1{font-size:1.55rem !important;}
+  .hero{padding:22px 20px;} .hero .titulo{font-size:1.7rem;}
+  .cal-d{min-height:64px; padding:4px;} .chip{font-size:9px;}
 }
 
 </style>
@@ -693,7 +798,7 @@ if "Alias" not in df_usr.columns: df_usr["Alias"] = df_usr["Usuario"]
 if "Avatar_Path" not in df_usr.columns: df_usr["Avatar_Path"] = ""
 if "Session_Token" not in df_usr.columns: df_usr["Session_Token"] = ""
 
-hoy = datetime.now()
+hoy = ahora_colombia()
 
 cambios_bd = False
 for idx, r in df_cli[df_cli["Estado"] == "Borrado"].iterrows():
@@ -712,16 +817,38 @@ df_papelera = df_cli[df_cli["Estado"] == "Borrado"].copy()
 
 def registrar_log(modulo, accion):
     try:
-        global df_log
         usr = st.session_state.get('alias_actual', 'Sistema')
-        nuevo = pd.DataFrame([{"Timestamp": hoy.strftime("%Y-%m-%d %H:%M:%S"), "Usuario": usr, "Modulo": modulo, "Accion": accion}])
-        df_log = pd.concat([df_log, nuevo], ignore_index=True)
-        guardar_tabla(df_log, "logs")
-    except: pass
+        df_l = leer_tabla("logs", ["Timestamp", "Usuario", "Modulo", "Accion"])
+        nuevo = pd.DataFrame([{"Timestamp": ahora_colombia().strftime("%Y-%m-%d %H:%M:%S"), "Usuario": usr, "Modulo": modulo, "Accion": accion}])
+        guardar_tabla(pd.concat([df_l, nuevo], ignore_index=True), "logs")
+    except Exception as e:
+        print(f"⚠️ No se pudo registrar el log: {type(e).__name__}")
 
 def limpiar_num(val):
-    try: return float(str(val).replace("$","").replace(".","").replace(",","").strip())
-    except: return 0.0
+    """Convierte montos a número. Acepta 1500000, 1.500.000, $ 1.500.000, 1,500,000.50 y 4500000.0"""
+    try:
+        if isinstance(val, (int, float)) and not pd.isna(val):
+            return float(val)
+        s = str(val).replace("$", "").replace(" ", "").strip()
+        if s == "" or s.lower() == "nan":
+            return 0.0
+        if "," in s and "." in s:
+            if s.rfind(",") > s.rfind("."):
+                s = s.replace(".", "").replace(",", ".")
+            else:
+                s = s.replace(",", "")
+        else:
+            for sep in (",", "."):
+                if sep in s:
+                    partes = s.split(sep)
+                    if len(partes) > 2 or len(partes[-1]) == 3:
+                        s = s.replace(sep, "")
+                    else:
+                        s = s.replace(sep, ".")
+        return float(s)
+    except (ValueError, TypeError):
+        return 0.0
+
 
 def motor_docx(plantilla, salida, dict_datos):
     try:
@@ -824,7 +951,10 @@ if st.session_state.autenticado:
     except: pass
 
 if not st.session_state.autenticado:
-    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("""<style>
+[data-testid="stAppViewContainer"]{background:radial-gradient(800px 520px at 12% 8%, rgba(201,162,75,.30), transparent 60%), radial-gradient(760px 520px at 92% 92%, rgba(47,109,181,.5), transparent 60%), linear-gradient(135deg,#0A1628,#13294B) !important;}
+.login-hero h1{color:#FFFFFF !important;} .login-hero p{color:#B8C4DA !important;} [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p{color:#9FB0CC !important;}
+</style><div style="height:5vh"></div>""", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
         if st.session_state.kicked:
@@ -857,150 +987,485 @@ if not st.session_state.autenticado:
 # ==========================================
 # 5. SIDEBAR ORDENADO
 # ==========================================
+# ==========================================
+# 5. CENTRO DE MANDO: barra superior, navegación, búsqueda y notificaciones
+# ==========================================
 if st.session_state.pop("bienvenida", False):
     st.toast(f"Bienvenido/a, {st.session_state.alias_actual}", icon="⚖️")
 
-with st.sidebar:
-    st.markdown("<div class='brand'><div class='seal'>⚖️</div><div><div class='name'>Insolvencia OS</div><div class='sub'>Gestión jurídica</div></div></div>", unsafe_allow_html=True)
-    avatar_p = st.session_state.get('avatar_path', '')
-    if pd.notna(avatar_p) and str(avatar_p).strip() != "" and os.path.exists(avatar_p):
-        with open(avatar_p, "rb") as f: encoded_img = base64.b64encode(f.read()).decode()
-        st.markdown(f"""<div style="text-align:center; margin-bottom: 10px;"><img src="data:image/png;base64,{encoded_img}" style="width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 2px solid #C9A24B; box-shadow: 0 0 15px rgba(212,175,55,0.3);"></div>""", unsafe_allow_html=True)
-    else:
-        st.markdown("""<div style="width: 60px; height: 60px; background: #C9A24B; border-radius: 50%; margin: 0 auto 10px auto; display:flex; align-items:center; justify-content:center; box-shadow: 0 0 15px rgba(212,175,55,0.3);"><span style="font-size: 30px;">⚖️</span></div>""", unsafe_allow_html=True)
+MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+DIAS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+FASES = [
+    (0, "📥", "Recolección", "#2F6DB5"),
+    (1, "📝", "Contratos", "#6B5BA6"),
+    (2, "✍️", "Firmas", "#C9A24B"),
+    (3, "🏛️", "Radicación", "#D9822B"),
+    (4, "✅", "Radicado", "#1F7A5C"),
+]
+CLASES_ACREEDOR = ["Primera", "Segunda", "Tercera", "Cuarta", "Quinta"]
+COLS_CLI = ["Cedula", "Nombre", "Fuerza", "Telefono", "Email", "Deuda_Est", "Ingresos", "Senal", "F_Actualizacion", "Estado", "F_Borrado"]
+COLS_TAR = ["ID_Tar", "Tarea", "Asignado", "Creador", "Estado", "Fecha"]
 
-    st.markdown(f"""<div style="text-align:center; padding-bottom: 10px; margin-bottom: 15px;"><h3 style="color: #F8FAFC !important; font-size: 18px; margin:0;">{st.session_state.alias_actual}</h3><span class="rol-badge">{st.session_state.rol_actual}</span></div>""", unsafe_allow_html=True)
-    
-    with st.expander("⚙️ Mi Perfil"):
+GRUPOS_NAV = [
+    ("🏠", "Inicio", [("Dashboard", "Centro de mando"), ("Kanban", "Tablero de casos"), ("Agenda", "Calendario"), ("Reportes", "Reportes")]),
+    ("📁", "Expedientes", [("Ficha", "Ficha 360"), ("Nuevo", "Apertura y edición"), ("Contratos", "Documentos y fases"), ("Acreedores", "Pasivos"), ("Papelera", "Papelera")]),
+    ("⚖️", "Jurídico", [("Actuaciones", "Seguimiento"), ("Vencimientos", "Vencimientos"), ("Memoriales", "Memoriales"), ("Simulador", "Simulador"), ("Rastreador", "Rastreador")]),
+    ("✅", "Gestión", [("Tareas", "Tareas"), ("Finanzas", "Cobros")]),
+    ("🛡️", "Admin", [("Usuarios", "Accesos"), ("Sistema", "Auditoría")]),
+]
+
+
+def es_jefa():
+    return st.session_state.rol_actual == "Administrador (Jefa)"
+
+
+def grupos_visibles():
+    visibles = []
+    for ico, nombre, paginas in GRUPOS_NAV:
+        if not es_jefa():
+            paginas = [p for p in paginas if p[0] not in ("Finanzas", "Usuarios", "Sistema")]
+        if paginas:
+            visibles.append((ico, nombre, paginas))
+    return visibles
+
+
+def fecha_larga(d):
+    return f"{DIAS_ES[d.weekday()].capitalize()} {d.day} de {MESES_ES[d.month - 1]} de {d.year}"
+
+
+def senal_num(serie):
+    return pd.to_numeric(serie, errors="coerce").fillna(0).astype(int)
+
+
+def mapa_saldos():
+    saldos = {}
+    for _, r in df_fin.iterrows():
+        saldos[str(r["Cedula"])] = limpiar_num(r["Honorarios"]) - limpiar_num(r["Abonado"])
+    return saldos
+
+
+def cerrar_sesion():
+    st.session_state.autenticado = False
+
+
+def abrir_ficha(cc):
+    """Salta a la Ficha 360 del cliente y deja ese cliente como foco para los demás módulos."""
+    ir_a_modulo("Ficha", cc)
+    st.session_state.busq_global = ""
+
+
+def ir_a_modulo(pagina, cc):
+    st.session_state.cliente_foco = str(cc)
+    st.session_state.pagina_actual = pagina
+    try:
+        d = leer_tabla("clientes", COLS_CLI)
+        fila = d[d["Cedula"].astype(str) == str(cc)]
+        if not fila.empty:
+            opcion = f"{cc} - {fila.iloc[0]['Nombre']}"
+            for clave in ("sel_ficha", "sim_sel", "sel_acr"):
+                st.session_state[clave] = opcion
+    except Exception as e:
+        print(f"⚠️ No se pudo fijar el cliente en foco: {type(e).__name__}")
+
+
+def idx_foco(opciones):
+    foco = str(st.session_state.get("cliente_foco", ""))
+    for i, o in enumerate(list(opciones)):
+        if str(o).split(" - ", 1)[0] == foco:
+            return i
+    return 0
+
+
+def cambiar_estado_tarea(id_tar, estado):
+    try:
+        d = leer_tabla("tareas", COLS_TAR)
+        d = d.astype(object)
+        d.loc[d["ID_Tar"].astype(str) == str(id_tar), "Estado"] = estado
+        guardar_tabla(d, "tareas")
+        registrar_log("TAREAS", f"Tarea {id_tar} marcada como {estado}")
+    except Exception as e:
+        print(f"⚠️ No se pudo actualizar la tarea: {type(e).__name__}")
+
+
+def mover_fase(cc, delta):
+    try:
+        d = leer_tabla("clientes", COLS_CLI).astype(object)
+        m = d["Cedula"].astype(str) == str(cc)
+        if not m.any():
+            return
+        actual = int(pd.to_numeric(d.loc[m, "Senal"], errors="coerce").fillna(0).iloc[0])
+        nuevo = max(0, min(4, actual + delta))
+        if nuevo == actual:
+            return
+        d.loc[m, "Senal"] = nuevo
+        d.loc[m, "F_Actualizacion"] = ahora_colombia().strftime("%Y-%m-%d")
+        guardar_tabla(d, "clientes")
+        registrar_log("KANBAN", f"Expediente {cc}: fase {actual} → {nuevo}")
+    except Exception as e:
+        print(f"⚠️ No se pudo mover el expediente: {type(e).__name__}")
+
+
+def mover_mes(delta):
+    ahora_c = ahora_colombia()
+    a, m = st.session_state.get("cal_mes", (ahora_c.year, ahora_c.month))
+    m += delta
+    while m > 12:
+        m -= 12
+        a += 1
+    while m < 1:
+        m += 12
+        a -= 1
+    st.session_state.cal_mes = (a, m)
+
+
+def mes_actual():
+    ahora_c = ahora_colombia()
+    st.session_state.cal_mes = (ahora_c.year, ahora_c.month)
+
+
+def etiqueta_dia(fecha_d, hoy_d):
+    dif = (fecha_d - hoy_d).days
+    if dif == 0:
+        return "Hoy"
+    if dif == 1:
+        return "Mañana"
+    if dif == -1:
+        return "Ayer"
+    if dif < 0:
+        return f"Hace {abs(dif)} días"
+    return f"{DIAS_ES[fecha_d.weekday()][:3].capitalize()} {fecha_d.day} {MESES_ES[fecha_d.month - 1][:3]}"
+
+
+def eventos_rango(ini_d, fin_d):
+    """Audiencias/citas y vencimientos activos entre dos fechas. Los vencimientos atrasados siempre aparecen."""
+    eventos = []
+    if not df_aud.empty:
+        fechas = pd.to_datetime(df_aud["Fecha_Hora"], errors="coerce")
+        for (_, r), dt in zip(df_aud.iterrows(), fechas):
+            if pd.notna(dt) and ini_d <= dt.date() <= fin_d:
+                eventos.append({"fecha": dt.to_pydatetime(), "tipo": "aud", "hora": True, "color": "#C9A24B",
+                                "titulo": str(r["Motivo"]).strip() or "Audiencia / cita", "detalle": str(r["Cliente"]), "cc": str(r["Cedula"])})
+    if not df_ven.empty:
+        activos = df_ven[df_ven["Estado"].astype(str) == "Activo"]
+        fechas = pd.to_datetime(activos["Fecha_Limite"], errors="coerce")
+        for (_, r), dt in zip(activos.iterrows(), fechas):
+            if pd.isna(dt):
+                continue
+            d = dt.date()
+            if ini_d - timedelta(days=60) <= d <= fin_d:
+                dias = (d - ini_d).days
+                color = "#8A1F35" if dias < 0 else ("#D9822B" if dias <= 2 else "#2F6DB5")
+                eventos.append({"fecha": dt.to_pydatetime(), "tipo": "ven", "hora": False, "color": color,
+                                "titulo": str(r["Asunto"]).strip() or "Vencimiento", "detalle": str(r["Cliente"]), "cc": str(r["Cedula"])})
+    eventos.sort(key=lambda e: e["fecha"])
+    return eventos
+
+
+def html_timeline(eventos, hoy_d):
+    if not eventos:
+        return "<div class='vacio'>🎉 Sin compromisos en este período.</div>"
+    items = []
+    for i, e in enumerate(eventos):
+        d = e["fecha"].date()
+        etiqueta = etiqueta_dia(d, hoy_d)
+        if e["hora"]:
+            etiqueta += " · " + e["fecha"].strftime("%I:%M %p").lstrip("0").lower()
+        tipo = "Audiencia / cita" if e["tipo"] == "aud" else ("Vencido" if d < hoy_d else "Vencimiento")
+        items.append(
+            f"<div class='tl-item' style='--c:{e['color']}; animation-delay:{i * 0.06:.2f}s;'><div class='tl-dot'></div>"
+            f"<b>{escape(e['titulo'])}</b><span>{escape(e['detalle'])} · {tipo}</span><em>{escape(etiqueta)}</em></div>"
+        )
+    return "<div class='tl'>" + "".join(items) + "</div>"
+
+
+def calcular_notificaciones():
+    """Reúne lo que requiere atención: vencimientos, audiencias, tareas y casos estancados."""
+    notifs = []
+    hoy_d = ahora_colombia().date()
+    for e in eventos_rango(hoy_d, hoy_d + timedelta(days=5)):
+        d = e["fecha"].date()
+        dias = (d - hoy_d).days
+        if e["tipo"] == "ven":
+            if dias < 0:
+                notifs.append({"nivel": "alto", "orden": dias, "icono": "🔴", "titulo": f"Vencido: {e['titulo']}", "detalle": f"{e['detalle']} · {etiqueta_dia(d, hoy_d)}", "pagina": "Vencimientos"})
+            elif dias <= 2:
+                notifs.append({"nivel": "alto", "orden": dias, "icono": "🟠", "titulo": f"Vence {etiqueta_dia(d, hoy_d).lower()}: {e['titulo']}", "detalle": e["detalle"], "pagina": "Vencimientos"})
+            else:
+                notifs.append({"nivel": "medio", "orden": dias, "icono": "🟡", "titulo": f"{e['titulo']}", "detalle": f"{e['detalle']} · {etiqueta_dia(d, hoy_d)}", "pagina": "Vencimientos"})
+        elif dias <= 2:
+            notifs.append({"nivel": "alto", "orden": dias, "icono": "⚖️", "titulo": f"{e['titulo']} · {etiqueta_dia(d, hoy_d).lower()}", "detalle": e["detalle"], "pagina": "Agenda"})
+    if not df_tar.empty:
+        mias = df_tar[(df_tar["Asignado"].astype(str) == str(st.session_state.alias_actual)) & (df_tar["Estado"].astype(str) == "Pendiente")]
+        if len(mias):
+            notifs.append({"nivel": "medio", "orden": 50, "icono": "✅", "titulo": f"Tienes {len(mias)} tarea(s) pendiente(s)", "detalle": "Revisa el tablero de tareas", "pagina": "Tareas"})
+    if not df_activos.empty:
+        sen = senal_num(df_activos["Senal"])
+        for (_, r), s in zip(df_activos.iterrows(), sen):
+            try:
+                dias = (ahora_colombia() - datetime.strptime(str(r["F_Actualizacion"])[:10], "%Y-%m-%d")).days
+            except ValueError:
+                continue
+            if s == 2 and dias >= 2:
+                notifs.append({"nivel": "medio", "orden": 60, "icono": "✍️", "titulo": f"Firma pendiente: {r['Nombre']}", "detalle": f"{dias} días sin avanzar", "pagina": "Kanban"})
+            elif s == 3 and dias >= 1:
+                notifs.append({"nivel": "alto", "orden": 61, "icono": "🏛️", "titulo": f"Radicación urgente: {r['Nombre']}", "detalle": f"{dias} días sin avanzar", "pagina": "Kanban"})
+    peso = {"alto": 0, "medio": 1, "info": 2}
+    notifs.sort(key=lambda n: (peso[n["nivel"]], n["orden"]))
+    return notifs
+
+
+def buscar_global(texto):
+    q = str(texto).strip().lower()
+    res = {"clientes": [], "acreedores": [], "actuaciones": []}
+    if len(q) < 2:
+        return res
+    if not df_activos.empty:
+        base = df_activos.astype(str)
+        mask = pd.Series(False, index=base.index)
+        for col in ["Nombre", "Cedula", "Telefono", "Email"]:
+            mask |= base[col].str.lower().str.contains(q, regex=False, na=False)
+        res["clientes"] = [(str(r["Cedula"]), str(r["Nombre"]), str(r["Fuerza"])) for _, r in base[mask].head(6).iterrows()]
+    nombres = {str(r["Cedula"]): str(r["Nombre"]) for _, r in df_activos.iterrows()}
+    if not df_acr.empty:
+        a = df_acr.astype(str)
+        for _, r in a[a["Acreedor"].str.lower().str.contains(q, regex=False, na=False)].head(5).iterrows():
+            if r["Cedula"] in nombres:
+                res["acreedores"].append((r["Cedula"], r["Acreedor"], nombres[r["Cedula"]]))
+    if not df_act.empty:
+        b = df_act.astype(str)
+        m2 = b["Radicado"].str.lower().str.contains(q, regex=False, na=False) | b["Juzgado"].str.lower().str.contains(q, regex=False, na=False)
+        for _, r in b[m2].head(5).iterrows():
+            if r["Cedula"] in nombres:
+                res["actuaciones"].append((r["Cedula"], f"{r['Tipo']} · {r['Radicado']}", nombres[r["Cedula"]]))
+    return res
+
+
+def ics_eventos(eventos):
+    """Exporta eventos a un archivo de calendario (.ics) compatible con Google Calendar y Outlook."""
+    def limpio(t):
+        return str(t).replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;").replace("\n", " ")
+    lineas = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Insolvencia OS//Agenda//ES"]
+    sello = ahora_colombia().strftime("%Y%m%dT%H%M%S")
+    for e in eventos:
+        lineas += ["BEGIN:VEVENT", f"UID:{uuid.uuid4().hex}@insolvencia-os", f"DTSTAMP:{sello}",
+                   f"SUMMARY:{limpio(('⚖ ' if e['tipo'] == 'aud' else '⏰ ') + e['titulo'] + ' - ' + e['detalle'])}"]
+        if e["hora"]:
+            lineas += [f"DTSTART:{e['fecha'].strftime('%Y%m%dT%H%M%S')}", f"DTEND:{(e['fecha'] + timedelta(hours=1)).strftime('%Y%m%dT%H%M%S')}"]
+        else:
+            lineas += [f"DTSTART;VALUE=DATE:{e['fecha'].strftime('%Y%m%d')}", f"DTEND;VALUE=DATE:{(e['fecha'] + timedelta(days=1)).strftime('%Y%m%d')}"]
+        lineas.append("END:VEVENT")
+    lineas.append("END:VCALENDAR")
+    return "\r\n".join(lineas).encode("utf-8")
+
+
+# ---------- Barra superior ----------
+notificaciones_hoy = calcular_notificaciones()
+alias_corto = str(st.session_state.alias_actual).split(" ")[0][:14] or "Perfil"
+
+with st.container(key="topbar"):
+    c_marca, c_busq, c_campana, c_user = st.columns([1.5, 3.3, 0.8, 1.3], vertical_alignment="center")
+    c_marca.markdown("<div class='marca'><div class='sello'>⚖️</div><div><div class='nombre'>Insolvencia OS</div><div class='lema'>Centro de mando</div></div></div>", unsafe_allow_html=True)
+    c_busq.text_input("Buscar", key="busq_global", placeholder="🔎 Buscar cliente, cédula, acreedor o radicado…", label_visibility="collapsed")
+
+    n_notif = len(notificaciones_hoy)
+    with c_campana.popover(f"🔔 {n_notif}" if n_notif else "🔔", use_container_width=True):
+        st.markdown("**Notificaciones**")
+        if not notificaciones_hoy:
+            st.success("Todo al día ✨")
+        for i, n in enumerate(notificaciones_hoy[:8]):
+            col_t, col_b = st.columns([4, 1], vertical_alignment="center")
+            col_t.markdown(f"{n['icono']} **{escape(n['titulo'])}**<br><span style='font-size:12px;color:#667085;'>{escape(n['detalle'])}</span>", unsafe_allow_html=True)
+            col_b.button("Ir", key=f"nt_{i}", on_click=cambiar_pagina, args=(n["pagina"],))
+        if n_notif > 8:
+            st.caption(f"y {n_notif - 8} más…")
+
+    with c_user.popover(f"👤 {alias_corto}", use_container_width=True):
+        avatar_p = st.session_state.get('avatar_path', '')
+        if pd.notna(avatar_p) and str(avatar_p).strip() != "" and os.path.exists(avatar_p):
+            with open(avatar_p, "rb") as f:
+                encoded_img = base64.b64encode(f.read()).decode()
+            st.markdown(f'<div style="text-align:center;"><img src="data:image/png;base64,{encoded_img}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid #C9A24B;"></div>', unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align:center;'><b>{escape(str(st.session_state.alias_actual))}</b><br><span style='font-size:12px;color:#8F7129;font-weight:700;'>{escape(str(st.session_state.rol_actual))}</span></div>", unsafe_allow_html=True)
         with st.form("form_perfil"):
             n_alias = st.text_input("Alias", value=st.session_state.alias_actual)
-            foto_sub = st.file_uploader("Foto de Perfil", type=["jpg", "png", "jpeg"])
-            if st.form_submit_button("Actualizar Perfil"):
+            foto_sub = st.file_uploader("Foto de perfil", type=["jpg", "png", "jpeg"])
+            if st.form_submit_button("Actualizar perfil"):
                 df_u_up = leer_tabla("usuarios", ["Usuario", "Password", "Rol", "Creador", "Alias", "Avatar_Path", "Session_Token"])
+                df_u_up = df_u_up.astype(object)
                 p_guardado = st.session_state.avatar_path
                 if foto_sub:
                     p_guardado = os.path.join(CARP_AVATAR, f"{st.session_state.usuario_actual}_{foto_sub.name}")
-                    with open(p_guardado, "wb") as f: f.write(foto_sub.getbuffer())
+                    with open(p_guardado, "wb") as f:
+                        f.write(foto_sub.getbuffer())
                 df_u_up.loc[df_u_up["Usuario"].astype(str) == st.session_state.usuario_actual, "Alias"] = n_alias
                 df_u_up.loc[df_u_up["Usuario"].astype(str) == st.session_state.usuario_actual, "Avatar_Path"] = p_guardado
                 guardar_tabla(df_u_up, "usuarios")
-                st.session_state.alias_actual = n_alias; st.session_state.avatar_path = p_guardado
-                st.success("Perfil Actualizado"); st.rerun()
+                st.session_state.alias_actual = n_alias
+                st.session_state.avatar_path = p_guardado
+                st.rerun()
+        st.button("🚪 Cerrar sesión", key="b_logout", use_container_width=True, on_click=cerrar_sesion)
 
-    st.markdown("<hr class='nav-hr'>", unsafe_allow_html=True)
+# ---------- Navegación en dos niveles ----------
+grupos = grupos_visibles()
+pagina_act = st.session_state.pagina_actual
+grupo_act = next((g[1] for g in grupos if any(p[0] == pagina_act for p in g[2])), grupos[0][1])
 
-    def boton_menu(etiqueta, pagina, clave):
-        activo = st.session_state.pagina_actual == pagina
-        st.button(etiqueta, key=clave, use_container_width=True,
-                  type="primary" if activo else "secondary",
-                  on_click=cambiar_pagina, args=(pagina,))
+with st.container(key="nav_grupos"):
+    cols_g = st.columns(len(grupos))
+    for col, (ico, nombre, paginas) in zip(cols_g, grupos):
+        with col:
+            st.button(f"{ico} {nombre}", key=f"g_{nombre}", use_container_width=True,
+                      type="primary" if nombre == grupo_act else "secondary",
+                      on_click=cambiar_pagina, args=(paginas[0][0],))
 
-    def cerrar_sesion():
-        st.session_state.autenticado = False
+paginas_grupo = next(g[2] for g in grupos if g[1] == grupo_act)
+with st.container(key="nav_sub"):
+    cols_s = st.columns(len(paginas_grupo))
+    for col, (clave, etiqueta) in zip(cols_s, paginas_grupo):
+        with col:
+            st.button(etiqueta, key=f"p_{clave}", use_container_width=True,
+                      type="primary" if clave == pagina_act else "secondary",
+                      on_click=cambiar_pagina, args=(clave,))
 
-    st.markdown("<p class='nav-label'>Inicio y gestión</p>", unsafe_allow_html=True)
-    boton_menu("📊  Portal Ejecutivo", "Dashboard", "b_dash")
-    boton_menu("📝  Apertura de Casos", "Nuevo", "b_nuev")
-    boton_menu("📅  Agenda y Citas", "Agenda", "b_agen")
-    boton_menu("✅  Gestor de Tareas", "Tareas", "b_tar")
-    boton_menu("🗑️  Papelera de Reciclaje", "Papelera", "b_pap")
+# ---------- Resultados de la búsqueda global ----------
+consulta = st.session_state.get("busq_global", "")
+if str(consulta).strip():
+    resultados = buscar_global(consulta)
+    total_res = sum(len(v) for v in resultados.values())
+    with st.container(border=True):
+        cab1, cab2 = st.columns([5, 1], vertical_alignment="center")
+        cab1.markdown(f"<p class='card-title'>Resultados para “{escape(str(consulta))}” · {total_res}</p>", unsafe_allow_html=True)
+        cab2.button("✖ Cerrar", key="cerrar_busq", on_click=lambda: st.session_state.update(busq_global=""), use_container_width=True)
+        if total_res == 0:
+            st.markdown("<div class='vacio'>Sin coincidencias. Prueba con otra cédula, nombre o radicado.</div>", unsafe_allow_html=True)
+        for tipo, etiqueta_tipo in (("clientes", "👤 Cliente"), ("acreedores", "🏦 Acreedor"), ("actuaciones", "📂 Actuación")):
+            for j, fila in enumerate(resultados[tipo]):
+                cc_r = fila[0]
+                c1, c2 = st.columns([5, 1], vertical_alignment="center")
+                if tipo == "clientes":
+                    c1.markdown(f"{etiqueta_tipo} · **{escape(fila[1])}** <span style='color:#667085;font-size:12px;'>CC {escape(cc_r)} · {escape(fila[2])}</span>", unsafe_allow_html=True)
+                else:
+                    c1.markdown(f"{etiqueta_tipo} · **{escape(fila[1])}** <span style='color:#667085;font-size:12px;'>cliente: {escape(fila[2])}</span>", unsafe_allow_html=True)
+                c2.button("Abrir ficha", key=f"rs_{tipo}_{j}_{cc_r}", on_click=abrir_ficha, args=(cc_r,), use_container_width=True)
 
-    st.markdown("<p class='nav-label'>Operación jurídica</p>", unsafe_allow_html=True)
-    boton_menu("⚙️  Contratos y Docs", "Contratos", "b_cont")
-    boton_menu("📂  Seguimiento Procesal", "Actuaciones", "b_act")
-    boton_menu("🚦  Control Vencimientos", "Vencimientos", "b_ven")
-    boton_menu("🤖  Dependiente Virtual", "Memoriales", "b_mem")
-    boton_menu("🔍  Rastreador Judicial", "Rastreador", "b_rast")
-
-    st.markdown("<p class='nav-label'>Finanzas y administración</p>", unsafe_allow_html=True)
-    boton_menu("📋  Pasivos y Acreedores", "Acreedores", "b_acr")
-    if st.session_state.rol_actual == "Administrador (Jefa)":
-        boton_menu("💰  Cobros y Facturación", "Finanzas", "b_fin")
-        boton_menu("👥  Accesos y Seguridad", "Usuarios", "b_usr")
-        boton_menu("🛡️  Auditoría y Exportación", "Sistema", "b_sis")
-
-    st.markdown("<hr class='nav-hr'>", unsafe_allow_html=True)
-    st.button("🚪  Cerrar Sesión", key="b_logout", use_container_width=True, on_click=cerrar_sesion)
 
 # ==========================================
 # 6. MÓDULOS DE LA APLICACIÓN
 # ==========================================
 
-# --- 1. PORTAL EJECUTIVO ---
+# --- 1. CENTRO DE MANDO ---
 if st.session_state.pagina_actual == 'Dashboard':
-    st.markdown("<h1>Portal Ejecutivo Legal</h1><p style='margin-bottom: 20px;'>Centro de operaciones sincronizado a Google Sheets.</p>", unsafe_allow_html=True)
-    total_cartera = sum([(limpiar_num(r["Honorarios"]) - limpiar_num(r["Abonado"])) for _, r in df_fin[df_fin["Cedula"].astype(str).isin(df_activos["Cedula"].astype(str))].iterrows() if limpiar_num(r["Honorarios"]) > limpiar_num(r["Abonado"])])
-    
-    c1, c2, c3, c4 = st.columns(4)
-    def kpi(icono, etiqueta, valor, color, fondo, retraso):
-        return (f"<div class='kpi' style='--accent:{color}; --accent-bg:{fondo}; animation-delay:{retraso}s;'>"
-                f"<div class='ico'>{icono}</div><p class='lbl'>{etiqueta}</p><p class='val'>{valor}</p></div>")
-
-    n_tramite = len(df_activos[df_activos['Senal'].isin([1, 2, 3])])
-    n_radicados = len(df_activos[df_activos['Senal'] >= 4])
-    c1.markdown(kpi("📁", "Expedientes activos", len(df_activos), "#2F6DB5", "rgba(47,109,181,.14)", 0), unsafe_allow_html=True)
-    c2.markdown(kpi("⏳", "En trámite", n_tramite, "#C9A24B", "rgba(201,162,75,.18)", .08), unsafe_allow_html=True)
-    c3.markdown(kpi("🏛️", "Radicados", n_radicados, "#1F7A5C", "rgba(31,122,92,.14)", .16), unsafe_allow_html=True)
-    if st.session_state.rol_actual == "Administrador (Jefa)":
-        c4.markdown(kpi("💰", "Cartera pendiente", f"$ {total_cartera:,.0f}", "#7B1E2E", "rgba(123,30,46,.12)", .24), unsafe_allow_html=True)
-
-    st.markdown("<div class='module-card'><h3>🔍 Buscador Rápido de Expedientes</h3>", unsafe_allow_html=True)
-    busq = st.text_input("Ingresa nombre o cédula para encontrar al cliente de inmediato:")
-    if busq:
-        res = df_activos[df_activos['Nombre'].str.contains(busq, case=False, na=False) | df_activos['Cedula'].astype(str).str.contains(busq, na=False)]
-        if not res.empty: st.dataframe(res[["Cedula", "Nombre", "Fuerza", "Telefono", "Email"]], use_container_width=True, hide_index=True)
-        else: st.info("No hay resultados coincidentes.")
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    col_info1, col_info2 = st.columns([1.5, 1])
-    with col_info1:
-        st.markdown("""
-            <div class='law-card'>
-                <h3>📜 Insolvencia de persona natural no comerciante</h3>
-                <p><b>Ventajas principales del trámite:</b><br>
-                • Posibilidad de suspender procesos ejecutivos y embargos, según lo que decida el juez.<br>
-                • Orden de pago ajustado a la capacidad real del deudor.<br>
-                • Ruta legal para reorganizar las deudas con sus acreedores.</p>
-            </div>
-        """, unsafe_allow_html=True)
-    with col_info2:
-        st.markdown("<div class='module-card'><h3 style='font-size: 18px;'>🔔 Alertas de Proceso</h3>", unsafe_allow_html=True)
-        hay_alertas = False
-        if not df_activos.empty:
-            for _, r in df_activos.iterrows():
-                try:
-                    dias = (hoy - datetime.strptime(str(r["F_Actualizacion"])[:10], "%Y-%m-%d")).days
-                    if r["Senal"] == 2 and dias >= 2:
-                        hay_alertas = True; st.warning(f"⏳ **Firma pendiente:** {r['Nombre']} ({dias} días).")
-                    elif r["Senal"] == 3 and dias >= 1:
-                        hay_alertas = True; st.error(f"🚨 **Radicación urgente:** {r['Nombre']} ({dias} días).")
-                except: pass
-        if not hay_alertas: st.success("✨ Expedientes fluyendo con normalidad.")
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-    st.markdown("<hr class='nav-hr' style='background:linear-gradient(90deg,transparent,#CDBF9A,transparent);'><h3 style='color:#7B1E2E !important;'>⚠️ Zona de peligro: gestión de archivo</h3>", unsafe_allow_html=True)
-    st.markdown("<div class='module-card'>", unsafe_allow_html=True)
-    if not df_activos.empty:
-        with st.form("form_borrar"):
-            cliente_a_borrar = st.selectbox("Seleccionar expediente para mover a la Papelera:", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"])
-            if st.form_submit_button("MOVER A LA PAPELERA"):
-                cc_b = cliente_a_borrar.split(" - ")[0]
-                nom_b = cliente_a_borrar.split(" - ")[1]
-                
-                df_cli.loc[df_cli["Cedula"].astype(str) == cc_b, "Estado"] = "Borrado"
-                df_cli.loc[df_cli["Cedula"].astype(str) == cc_b, "F_Borrado"] = hoy.strftime("%Y-%m-%d")
-                guardar_tabla(df_cli, "clientes")
-                
-                mover_a_papelera_drive(str(cc_b), nom_b)
-                
-                registrar_log("SISTEMA", f"Expediente y carpeta enviados a papelera: {cc_b}")
-                st.success("¡Expediente movido a la papelera correctamente en Sheets y Drive!")
-                time.sleep(1.5)
-                st.rerun()
+    ahora = ahora_colombia()
+    hoy_d = ahora.date()
+    saludo = "Buenos días" if ahora.hour < 12 else ("Buenas tardes" if ahora.hour < 19 else "Buenas noches")
+    primer_nombre = str(st.session_state.alias_actual).split(" ")[0] or "equipo"
+    n_alto = sum(1 for n in notificaciones_hoy if n["nivel"] == "alto")
+    eventos_semana = eventos_rango(hoy_d, hoy_d + timedelta(days=7))
+    n_hoy = sum(1 for e in eventos_semana if e["fecha"].date() == hoy_d)
+    if n_alto:
+        resumen = f"Hay {n_alto} asunto(s) que piden atención inmediata. Empieza por ahí."
+    elif n_hoy:
+        resumen = f"Hoy tienes {n_hoy} compromiso(s) en agenda. Lo demás va sin sobresaltos."
     else:
-        st.info("No hay clientes activos para archivar.")
-    st.markdown("</div>", unsafe_allow_html=True)
-    
+        resumen = "Todo está bajo control. Buen momento para adelantar expedientes."
+    st.markdown(
+        f"<div class='hero'><p class='kick'>{escape(fecha_larga(hoy_d))}</p>"
+        f"<p class='titulo'>{saludo}, {escape(primer_nombre)}</p><p class='sub'>{escape(resumen)}</p>"
+        f"<div class='chips'><span class='chip2'>📁 {len(df_activos)} expedientes activos</span>"
+        f"<span class='chip2'>🗓️ {len(eventos_semana)} compromisos en 7 días</span>"
+        f"<span class='chip2'>🔔 {len(notificaciones_hoy)} notificaciones</span></div></div>",
+        unsafe_allow_html=True,
+    )
+
+    sen_activos = senal_num(df_activos["Senal"]) if not df_activos.empty else pd.Series(dtype=int)
+    n_tramite = int(sen_activos.isin([1, 2, 3]).sum())
+    n_radicados = int((sen_activos >= 4).sum())
+    n_total = max(len(df_activos), 1)
+    saldos = mapa_saldos()
+    activos_cc = set(df_activos["Cedula"].astype(str)) if not df_activos.empty else set()
+    total_cartera = sum(v for k, v in saldos.items() if k in activos_cc and v > 0)
+    mis_pend = 0
+    if not df_tar.empty:
+        mis_pend = int(((df_tar["Asignado"].astype(str) == str(st.session_state.alias_actual)) & (df_tar["Estado"].astype(str) == "Pendiente")).sum())
+
+    def kpi(icono, etiqueta, valor, color, fondo, retraso, porcentaje=None):
+        barra = f"<div class='bar'><i style='width:{porcentaje}%;'></i></div>" if porcentaje is not None else ""
+        return (f"<div class='kpi' style='--accent:{color}; --accent-bg:{fondo}; animation-delay:{retraso}s;'>"
+                f"<div class='ico'>{icono}</div><p class='lbl'>{etiqueta}</p><p class='val'>{valor}</p>{barra}</div>")
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.markdown(kpi("📁", "Expedientes activos", len(df_activos), "#2F6DB5", "rgba(47,109,181,.14)", 0), unsafe_allow_html=True)
+    k2.markdown(kpi("⏳", "En trámite", n_tramite, "#C9A24B", "rgba(201,162,75,.2)", .08, round(100 * n_tramite / n_total)), unsafe_allow_html=True)
+    k3.markdown(kpi("🏛️", "Radicados", n_radicados, "#1F7A5C", "rgba(31,122,92,.14)", .16, round(100 * n_radicados / n_total)), unsafe_allow_html=True)
+    if es_jefa():
+        k4.markdown(kpi("💰", "Cartera pendiente", f"$ {total_cartera:,.0f}", "#8A1F35", "rgba(138,31,53,.12)", .24), unsafe_allow_html=True)
+    else:
+        k4.markdown(kpi("✅", "Mis tareas pendientes", mis_pend, "#8A1F35", "rgba(138,31,53,.12)", .24), unsafe_allow_html=True)
+
+    col_a, col_b = st.columns([1.55, 1])
+    with col_a:
+        with st.container(border=True):
+            st.markdown("<p class='card-title'>🗓️ Próximos 7 días</p>", unsafe_allow_html=True)
+            st.markdown(html_timeline(eventos_semana[:8], hoy_d), unsafe_allow_html=True)
+            if len(eventos_semana) > 8:
+                st.caption(f"y {len(eventos_semana) - 8} compromisos más en el calendario.")
+            st.button("Abrir calendario completo →", key="dash_cal", on_click=cambiar_pagina, args=("Agenda",))
+        if es_jefa():
+            with st.container(border=True):
+                st.markdown("<p class='card-title'>🕘 Actividad reciente del equipo</p>", unsafe_allow_html=True)
+                if df_log.empty:
+                    st.markdown("<div class='vacio'>Aún no hay actividad registrada.</div>", unsafe_allow_html=True)
+                else:
+                    filas = []
+                    for _, r in df_log.tail(6).iloc[::-1].iterrows():
+                        filas.append(f"<div class='act'><b>{escape(str(r['Usuario']))}</b> · {escape(str(r['Accion']))}<em>{escape(str(r['Timestamp'])[:16])} · {escape(str(r['Modulo']))}</em></div>")
+                    st.markdown("".join(filas), unsafe_allow_html=True)
+    with col_b:
+        with st.container(border=True):
+            st.markdown("<p class='card-title'>⚡ Requiere atención</p>", unsafe_allow_html=True)
+            if not notificaciones_hoy:
+                st.markdown("<div class='vacio'>✨ Nada urgente por ahora.</div>", unsafe_allow_html=True)
+            for n in notificaciones_hoy[:4]:
+                color = "#8A1F35" if n["nivel"] == "alto" else "#D9822B"
+                fondo = "rgba(138,31,53,.07)" if n["nivel"] == "alto" else "rgba(217,130,43,.08)"
+                st.markdown(f"<div class='alerta-item' style='--c:{color}; --bg:{fondo};'><div>{n['icono']}</div><div><b>{escape(n['titulo'])}</b><span>{escape(n['detalle'])}</span></div></div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("<p class='card-title'>🧭 Pipeline de expedientes</p>", unsafe_allow_html=True)
+            cuentas = sen_activos.clip(upper=4).value_counts() if len(sen_activos) else pd.Series(dtype=int)
+            segmentos = "".join(f"<span style='flex:{int(cuentas.get(n, 0))}; background:{color};' title='{nombre}'></span>" for n, _, nombre, color in FASES if int(cuentas.get(n, 0)) > 0)
+            filas_fase = "".join(f"<div class='pipe-row'><span><i style='--c:{color};'></i>{ico} {nombre}</span><b>{int(cuentas.get(n, 0))}</b></div>" for n, ico, nombre, color in FASES)
+            st.markdown(f"<div class='pipe'>{segmentos}</div>{filas_fase}", unsafe_allow_html=True)
+            st.button("Abrir tablero →", key="dash_kb", on_click=cambiar_pagina, args=("Kanban",))
+        with st.container(border=True):
+            st.markdown("<p class='card-title'>✅ Mis tareas</p>", unsafe_allow_html=True)
+            mias = df_tar[(df_tar["Asignado"].astype(str) == str(st.session_state.alias_actual)) & (df_tar["Estado"].astype(str) == "Pendiente")] if not df_tar.empty else df_tar
+            if mias.empty:
+                st.markdown("<div class='vacio'>Sin tareas pendientes 🙌</div>", unsafe_allow_html=True)
+            else:
+                for i, (_, t) in enumerate(mias.head(5).iterrows()):
+                    c_t, c_b = st.columns([5, 1], vertical_alignment="center")
+                    c_t.markdown(f"<div class='task'>{escape(str(t['Tarea']))}<em>de {escape(str(t['Creador']))}</em></div>", unsafe_allow_html=True)
+                    with c_b.container(key=f"mini_done_{i}"):
+                        st.button("✓", key=f"done_{i}_{t['ID_Tar']}", on_click=cambiar_estado_tarea, args=(t['ID_Tar'], "Hecha"), help="Marcar como hecha")
+
+    with st.expander("⚠️ Zona de peligro: archivar un expediente"):
+        if not df_activos.empty:
+            with st.form("form_borrar"):
+                cliente_a_borrar = st.selectbox("Seleccionar expediente para mover a la Papelera:", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"])
+                if st.form_submit_button("MOVER A LA PAPELERA"):
+                    cc_b, nom_b = cliente_a_borrar.split(" - ", 1)
+                    df_cli.loc[df_cli["Cedula"].astype(str) == cc_b, "Estado"] = "Borrado"
+                    df_cli.loc[df_cli["Cedula"].astype(str) == cc_b, "F_Borrado"] = hoy.strftime("%Y-%m-%d")
+                    guardar_tabla(df_cli, "clientes")
+                    mover_a_papelera_drive(str(cc_b), nom_b)
+                    registrar_log("SISTEMA", f"Expediente y carpeta enviados a papelera: {cc_b}")
+                    st.success("Expediente movido a la papelera en Sheets y Drive.")
+                    time.sleep(1.2)
+                    st.rerun()
+        else:
+            st.info("No hay clientes activos para archivar.")
+
+
 # --- 2. APERTURA Y EDICIÓN ---
 elif st.session_state.pagina_actual == 'Nuevo':
     st.markdown("<h1>Gestión de Expedientes</h1>", unsafe_allow_html=True)
@@ -1127,7 +1592,7 @@ elif st.session_state.pagina_actual == 'Nuevo':
 elif st.session_state.pagina_actual == 'Contratos':
     st.markdown("<h1>Gestión Documental y Contratos</h1>", unsafe_allow_html=True)
     if not df_activos.empty:
-        cli_sel = st.selectbox("Expediente:", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"])
+        cli_sel = st.selectbox("Expediente:", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"], index=idx_foco(df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"]))
         cc_s, nom_s = cli_sel.split(" - ")[0], cli_sel.split(" - ")[1]
         data_c = df_activos[df_activos["Cedula"].astype(str) == cc_s].iloc[0]
         senal, tel_c = int(data_c["Senal"]), str(data_c.get("Telefono", ""))
@@ -1424,7 +1889,7 @@ elif st.session_state.pagina_actual == 'Contratos':
 elif st.session_state.pagina_actual == 'Actuaciones':
     st.markdown("<h1>Seguimiento Procesal</h1>", unsafe_allow_html=True)
     if not df_activos.empty:
-        c_a = st.selectbox("Expediente:", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"])
+        c_a = st.selectbox("Expediente:", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"], index=idx_foco(df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"]))
         cc_a, nom_a = c_a.split(" - ")[0], c_a.split(" - ")[1]
         estructurar_carpetas(cc_a, nom_a)
         mostrar_boveda(cc_a, nom_a)
@@ -1500,20 +1965,51 @@ elif st.session_state.pagina_actual == 'Vencimientos':
 
 # --- 6. ACREEDORES ---
 elif st.session_state.pagina_actual == 'Acreedores':
-    st.markdown("<h1>📋 Inventario de Pasivos y Acreedores</h1>", unsafe_allow_html=True)
-    if not df_activos.empty:
-        st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
-        with st.form("form_acr"):
-            cl_a = st.selectbox("Expediente de Insolvencia", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"])
+    st.markdown("<h1>Inventario de pasivos y acreedores</h1><p class='page-sub'>Registra cada deuda con su clase. Esta información alimenta el simulador y la ficha 360.</p>", unsafe_allow_html=True)
+    if df_activos.empty:
+        st.info("Aún no hay expedientes activos.")
+    else:
+        opciones_ac = (df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"]).tolist()
+        if st.session_state.get("sel_acr") not in opciones_ac:
+            st.session_state["sel_acr"] = opciones_ac[idx_foco(opciones_ac)]
+        cl_a = st.selectbox("Expediente de insolvencia", opciones_ac, key="sel_acr")
+        cc_a = cl_a.split(" - ", 1)[0]
+        st.session_state.cliente_foco = cc_a
+        with st.form("form_acr", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
-            with c1: nom_acr = st.text_input("Acreedor")
-            with c2: cuantia_acr = st.number_input("Cuantía ($)", min_value=0, step=100000)
-            with c3: clase_acr = st.selectbox("Clase", ["Primera", "Segunda", "Tercera", "Cuarta", "Quinta"])
+            with c1:
+                nom_acr = st.text_input("Acreedor")
+            with c2:
+                cuantia_acr = st.number_input("Cuantía ($)", min_value=0, step=100000)
+            with c3:
+                clase_acr = st.selectbox("Clase", CLASES_ACREEDOR)
             if st.form_submit_button("AGREGAR PASIVO"):
-                cc_a = cl_a.split(" - ")[0]
-                n_ac = pd.DataFrame([{"ID_Acr": f"ACR-{hoy.strftime('%H%M%S')}", "Cedula": str(cc_a), "Acreedor": nom_acr, "Cuantia": str(cuantia_acr), "Clase": clase_acr}])
-                guardar_tabla(pd.concat([df_acr, n_ac], ignore_index=True), "acreedores"); st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
+                if nom_acr and cuantia_acr > 0:
+                    n_ac = pd.DataFrame([{"ID_Acr": f"ACR-{uuid.uuid4().hex[:8]}", "Cedula": str(cc_a), "Acreedor": nom_acr, "Cuantia": str(cuantia_acr), "Clase": clase_acr}])
+                    guardar_tabla(pd.concat([df_acr, n_ac], ignore_index=True), "acreedores")
+                    registrar_log("ACREEDORES", f"Agregó acreedor {nom_acr} al expediente {cc_a}")
+                    st.rerun()
+                else:
+                    st.error("Indica el nombre del acreedor y una cuantía mayor a cero.")
+        mis_acr = df_acr[df_acr["Cedula"].astype(str) == cc_a] if not df_acr.empty else df_acr
+        if mis_acr.empty:
+            st.markdown("<div class='vacio'>Este expediente aún no tiene acreedores registrados.</div>", unsafe_allow_html=True)
+        else:
+            total_a = sum(limpiar_num(v) for v in mis_acr["Cuantia"])
+            k1, k2 = st.columns(2)
+            k1.markdown(f"<div class='kpi' style='--accent:#8A1F35; --accent-bg:rgba(138,31,53,.12);'><div class='ico'>🏦</div><p class='lbl'>Deuda inventariada</p><p class='val'>$ {total_a:,.0f}</p></div>", unsafe_allow_html=True)
+            k2.markdown(f"<div class='kpi' style='--accent:#2F6DB5; --accent-bg:rgba(47,109,181,.14);'><div class='ico'>📋</div><p class='lbl'>Acreedores</p><p class='val'>{len(mis_acr)}</p></div>", unsafe_allow_html=True)
+            tabla_m = mis_acr[["Acreedor", "Cuantia", "Clase"]].copy()
+            tabla_m["Cuantia"] = tabla_m["Cuantia"].apply(limpiar_num)
+            st.dataframe(tabla_m, use_container_width=True, hide_index=True)
+            with st.expander("🗑️ Eliminar un acreedor"):
+                etiquetas = {f"{r['Acreedor']} · $ {limpiar_num(r['Cuantia']):,.0f}": r["ID_Acr"] for _, r in mis_acr.iterrows()}
+                elegido = st.selectbox("Acreedor a eliminar", list(etiquetas.keys()), key="acr_del_sel")
+                if st.button("Eliminar acreedor", key="acr_del_btn"):
+                    nuevo_acr = df_acr[df_acr["ID_Acr"].astype(str) != str(etiquetas[elegido])]
+                    guardar_tabla(nuevo_acr, "acreedores")
+                    registrar_log("ACREEDORES", f"Eliminó acreedor del expediente {cc_a}")
+                    st.rerun()
 
 
 # ==========================================
@@ -1576,19 +2072,330 @@ elif st.session_state.pagina_actual == 'Rastreador':
             st.link_button("📋 Procuraduría (Antecedentes)", "https://www.procuraduria.gov.co/Pages/Generacion-de-Antecedentes.aspx", use_container_width=True)
             
 
+# --- NUEVO: TABLERO KANBAN ---
+elif st.session_state.pagina_actual == 'Kanban':
+    st.markdown("<h1>Tablero de casos</h1><p class='page-sub'>Cada columna es una fase del trámite. Usa ◀ ▶ para mover un expediente; el cambio queda en el registro de auditoría.</p>", unsafe_allow_html=True)
+    if df_activos.empty:
+        st.info("Aún no hay expedientes activos. Crea el primero en Expedientes → Apertura y edición.")
+    else:
+        fuerzas = ["Todas"] + sorted(df_activos["Fuerza"].astype(str).unique().tolist())
+        filtro = st.radio("Filtrar por fuerza", fuerzas, horizontal=True, key="kb_filtro")
+        base = df_activos if filtro == "Todas" else df_activos[df_activos["Fuerza"].astype(str) == filtro]
+        sen = senal_num(base["Senal"]).clip(upper=4)
+        saldos_kb = mapa_saldos()
+        cols_kb = st.columns(5)
+        for (n, ico, nombre, color), col in zip(FASES, cols_kb):
+            with col:
+                sub = base[sen == n]
+                st.markdown(f"<div class='kb-head' style='--c:{color};'><div>{ico} {nombre}</div><span>{len(sub)}</span></div>", unsafe_allow_html=True)
+                if sub.empty:
+                    st.markdown("<div class='kb-vacio'>Sin casos en esta fase</div>", unsafe_allow_html=True)
+                for _, r in sub.iterrows():
+                    cc_k = str(r["Cedula"])
+                    try:
+                        dias_k = (ahora_colombia() - datetime.strptime(str(r["F_Actualizacion"])[:10], "%Y-%m-%d")).days
+                    except ValueError:
+                        dias_k = 0
+                    saldo_k = saldos_kb.get(cc_k, 0)
+                    pill_dias = f"<span class='pill {'warn' if dias_k >= 3 and n in (2, 3) else ''}'>⏱ {dias_k} d en la fase</span>"
+                    pill_saldo = f"<span class='pill {'warn' if saldo_k > 0 else ''}'>💰 {'Saldo $' + format(saldo_k, ',.0f') if saldo_k > 0 else 'Al día'}</span>" if es_jefa() else ""
+                    st.markdown(f"<div class='kb-card' style='--c:{color};'><b>{escape(str(r['Nombre']))}</b><span>CC {escape(cc_k)} · {escape(str(r['Fuerza']))}</span>{pill_dias}{pill_saldo}</div>", unsafe_allow_html=True)
+                    b1, b2, b3 = st.columns(3)
+                    with b1.container(key=f"mini_prev_{cc_k}"):
+                        if n > 0:
+                            st.button("◀", key=f"kbp_{cc_k}", on_click=mover_fase, args=(cc_k, -1), use_container_width=True, help="Mover a la fase anterior")
+                    with b2.container(key=f"mini_open_{cc_k}"):
+                        st.button("🔎", key=f"kbo_{cc_k}", on_click=abrir_ficha, args=(cc_k,), use_container_width=True, help="Abrir ficha 360")
+                    with b3.container(key=f"mini_next_{cc_k}"):
+                        if n < 4:
+                            st.button("▶", key=f"kbn_{cc_k}", on_click=mover_fase, args=(cc_k, 1), use_container_width=True, help="Mover a la fase siguiente")
+                    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+# --- NUEVO: FICHA 360 ---
+elif st.session_state.pagina_actual == 'Ficha':
+    st.markdown("<h1>Ficha 360</h1><p class='page-sub'>Todo el expediente en un solo lugar: fase, deudas, agenda, actuaciones y finanzas.</p>", unsafe_allow_html=True)
+    if df_activos.empty:
+        st.info("Aún no hay expedientes activos.")
+    else:
+        opciones_f = (df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"]).tolist()
+        if st.session_state.get("sel_ficha") not in opciones_f:
+            st.session_state["sel_ficha"] = opciones_f[idx_foco(opciones_f)]
+        sel_f = st.selectbox("Expediente", opciones_f, key="sel_ficha")
+        cc_f, nom_f = sel_f.split(" - ", 1)
+        st.session_state.cliente_foco = cc_f
+        dato = df_activos[df_activos["Cedula"].astype(str) == cc_f].iloc[0]
+        fase_f = int(min(4, senal_num(pd.Series([dato["Senal"]])).iloc[0]))
+        saldo_f = mapa_saldos().get(cc_f, 0)
+        iniciales = "".join(p[0] for p in nom_f.split()[:2]).upper() or "?"
+        tel_f = str(dato.get("Telefono", "")).strip()
+        tel_f = tel_f[:-2] if tel_f.endswith(".0") else tel_f
+        mail_f = str(dato.get("Email", "")).strip()
+        tel_f = "" if tel_f.lower() == "nan" else tel_f
+        mail_f = "" if mail_f.lower() == "nan" else mail_f
+
+        with st.container(border=True):
+            chips = f"<span class='chip-info'>{FASES[fase_f][1]} {FASES[fase_f][2]}</span><span class='chip-info'>{escape(str(dato['Fuerza']))}</span>"
+            if es_jefa():
+                chips += f"<span class='chip-info {'rojo' if saldo_f > 0 else 'verde'}'>💰 {'Saldo $' + format(saldo_f, ',.0f') if saldo_f > 0 else 'Honorarios al día'}</span>"
+            st.markdown(f"<div class='ficha-head'><div class='avatar'>{escape(iniciales)}</div><div><p class='nom'>{escape(nom_f)}</p><p class='det'>CC {escape(cc_f)}{(' · 📞 ' + escape(tel_f)) if tel_f else ''}{(' · ✉️ ' + escape(mail_f)) if mail_f else ''}</p><div style='margin-top:8px;'>{chips}</div></div></div>", unsafe_allow_html=True)
+            pasos = []
+            for n, ico, nombre, color in FASES:
+                clase = "ok" if n < fase_f else ("now" if n == fase_f else "")
+                pasos.append(f"<div class='s {clase}'><i>{'✓' if n < fase_f else ico}</i>{nombre}</div>")
+            st.markdown(f"<div class='stepper'>{''.join(pasos)}</div>", unsafe_allow_html=True)
+            a1, a2, a3, a4, a5 = st.columns(5)
+            a1.button("📄 Documentos", key="fi_doc", on_click=ir_a_modulo, args=("Contratos", cc_f), use_container_width=True)
+            a2.button("📋 Pasivos", key="fi_acr", on_click=ir_a_modulo, args=("Acreedores", cc_f), use_container_width=True)
+            a3.button("🧮 Simular", key="fi_sim", on_click=ir_a_modulo, args=("Simulador", cc_f), use_container_width=True)
+            if tel_f:
+                a4.link_button("💬 WhatsApp", f"https://wa.me/57{tel_f.replace(' ', '')}", use_container_width=True)
+            if mail_f:
+                a5.link_button("✉️ Correo", f"mailto:{mail_f}", use_container_width=True)
+
+        acr_f = df_acr[df_acr["Cedula"].astype(str) == cc_f] if not df_acr.empty else df_acr
+        act_f = df_act[df_act["Cedula"].astype(str) == cc_f] if not df_act.empty else df_act
+        aud_f = df_aud[df_aud["Cedula"].astype(str) == cc_f] if not df_aud.empty else df_aud
+        ven_f = df_ven[(df_ven["Cedula"].astype(str) == cc_f) & (df_ven["Estado"].astype(str) == "Activo")] if not df_ven.empty else df_ven
+        deuda_reg = sum(limpiar_num(v) for v in acr_f["Cuantia"]) if not acr_f.empty else 0
+
+        nombres_tabs = ["Resumen", "Acreedores", "Actuaciones", "Agenda"] + (["Finanzas"] if es_jefa() else [])
+        tabs_f = st.tabs(nombres_tabs)
+        with tabs_f[0]:
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Deuda declarada", f"$ {limpiar_num(dato['Deuda_Est']):,.0f}")
+            m2.metric("Deuda inventariada", f"$ {deuda_reg:,.0f}")
+            m3.metric("Acreedores", len(acr_f))
+            m4.metric("Actuaciones", len(act_f))
+            dif = limpiar_num(dato['Deuda_Est']) - deuda_reg
+            if len(acr_f) == 0:
+                st.info("Aún no hay acreedores inventariados. Regístralos en Pasivos para poder simular una propuesta.")
+            elif abs(dif) > 1:
+                st.warning(f"La deuda declarada y la inventariada difieren en $ {abs(dif):,.0f}. Conviene conciliarlas con los certificados de los acreedores.")
+            else:
+                st.success("La deuda declarada coincide con la inventariada.")
+        with tabs_f[1]:
+            if acr_f.empty:
+                st.markdown("<div class='vacio'>Sin acreedores registrados.</div>", unsafe_allow_html=True)
+            else:
+                tabla_a = acr_f[["Acreedor", "Cuantia", "Clase"]].copy()
+                tabla_a["Cuantia"] = tabla_a["Cuantia"].apply(limpiar_num)
+                st.dataframe(tabla_a, use_container_width=True, hide_index=True)
+                por_clase = tabla_a.groupby("Clase")["Cuantia"].sum().reindex(CLASES_ACREEDOR).fillna(0).reset_index()
+                st.bar_chart(por_clase, x="Clase", y="Cuantia", color="#C9A24B")
+        with tabs_f[2]:
+            if act_f.empty:
+                st.markdown("<div class='vacio'>Sin actuaciones registradas.</div>", unsafe_allow_html=True)
+            else:
+                st.dataframe(act_f[["Fecha", "Tipo", "Juzgado", "Radicado", "Anotacion"]].iloc[::-1], use_container_width=True, hide_index=True)
+        with tabs_f[3]:
+            evs_f = [e for e in eventos_rango(ahora_colombia().date() - timedelta(days=60), ahora_colombia().date() + timedelta(days=365)) if e["cc"] == cc_f]
+            st.markdown(html_timeline(evs_f[:10], ahora_colombia().date()), unsafe_allow_html=True)
+        if es_jefa():
+            with tabs_f[4]:
+                fin_f = df_fin[df_fin["Cedula"].astype(str) == cc_f]
+                if fin_f.empty:
+                    st.info("Este expediente no tiene honorarios configurados.")
+                else:
+                    hon = limpiar_num(fin_f.iloc[0]["Honorarios"])
+                    abo = limpiar_num(fin_f.iloc[0]["Abonado"])
+                    f1, f2, f3 = st.columns(3)
+                    f1.metric("Honorarios", f"$ {hon:,.0f}")
+                    f2.metric("Abonado", f"$ {abo:,.0f}")
+                    f3.metric("Saldo", f"$ {max(hon - abo, 0):,.0f}")
+                    st.progress(min(abo / hon, 1.0) if hon > 0 else 0.0, text=f"{(abo / hon * 100) if hon > 0 else 0:.0f}% recaudado")
+
+# --- NUEVO: SIMULADOR DE PROPUESTA DE PAGO ---
+elif st.session_state.pagina_actual == 'Simulador':
+    st.markdown("<h1>Simulador de propuesta de pago</h1><p class='page-sub'>Estima cuánto podría pagar el deudor, en cuánto tiempo y cómo se repartiría entre sus acreedores por clase.</p>", unsafe_allow_html=True)
+    lista_sim = (df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"]).tolist() if not df_activos.empty else []
+    opciones_sim = ["— Escenario manual —"] + lista_sim
+    if st.session_state.get("sim_sel") not in opciones_sim:
+        st.session_state["sim_sel"] = opciones_sim[(idx_foco(lista_sim) + 1) if (lista_sim and str(st.session_state.get("cliente_foco", "")) != "") else 0]
+    sel_sim = st.selectbox("Cargar datos de un expediente", opciones_sim, key="sim_sel")
+
+    ingreso_base, base_acr = 0.0, pd.DataFrame({"Acreedor": [""], "Cuantía": [0.0], "Clase": ["Quinta"]})
+    if sel_sim != opciones_sim[0]:
+        cc_s2 = sel_sim.split(" - ", 1)[0]
+        fila_s = df_activos[df_activos["Cedula"].astype(str) == cc_s2]
+        if not fila_s.empty:
+            ingreso_base = limpiar_num(fila_s.iloc[0]["Ingresos"])
+        acr_s = df_acr[df_acr["Cedula"].astype(str) == cc_s2] if not df_acr.empty else df_acr
+        if not acr_s.empty:
+            base_acr = pd.DataFrame({"Acreedor": acr_s["Acreedor"].astype(str).tolist(),
+                                     "Cuantía": [limpiar_num(v) for v in acr_s["Cuantia"]],
+                                     "Clase": [c if c in CLASES_ACREEDOR else "Quinta" for c in acr_s["Clase"].astype(str)]})
+
+    with st.container(border=True):
+        st.markdown("<p class='card-title'>1 · Capacidad de pago</p>", unsafe_allow_html=True)
+        p1, p2 = st.columns(2)
+        ingresos_m = p1.number_input("Ingresos mensuales ($)", min_value=0.0, value=float(ingreso_base), step=100000.0, key=f"sim_ing_{sel_sim}")
+        gastos_m = p2.number_input("Gastos de subsistencia mensuales ($)", min_value=0.0, value=0.0, step=100000.0, key=f"sim_gas_{sel_sim}")
+        p3, p4 = st.columns(2)
+        pct = p3.slider("% del excedente que se destina a deudas", 10, 100, 100, step=5, key="sim_pct")
+        plazo = p4.slider("Plazo de la propuesta (meses)", 6, 120, 60, step=6, key="sim_plazo")
+
+    with st.container(border=True):
+        st.markdown("<p class='card-title'>2 · Acreedores (puedes editar, agregar o quitar filas)</p>", unsafe_allow_html=True)
+        tabla_ed = st.data_editor(
+            base_acr, num_rows="dynamic", use_container_width=True, hide_index=True, key=f"sim_ed_{sel_sim}",
+            column_config={
+                "Cuantía": st.column_config.NumberColumn("Cuantía ($)", min_value=0.0, step=100000.0, format="%.0f"),
+                "Clase": st.column_config.SelectboxColumn("Clase", options=CLASES_ACREEDOR, required=True),
+            },
+        )
+
+    tabla_ed = tabla_ed.copy()
+    tabla_ed["Cuantía"] = pd.to_numeric(tabla_ed["Cuantía"], errors="coerce").fillna(0.0)
+    tabla_ed["Clase"] = tabla_ed["Clase"].fillna("Quinta")
+    tabla_ed["Acreedor"] = tabla_ed["Acreedor"].fillna("").astype(str)
+    tabla_ed = tabla_ed[tabla_ed["Cuantía"] > 0].reset_index(drop=True)
+
+    excedente = max(ingresos_m - gastos_m, 0.0)
+    cuota = excedente * pct / 100
+    disponible = cuota * plazo
+    deuda_total = float(tabla_ed["Cuantía"].sum())
+
+    # Reparto por orden de clase: cada clase se paga completa antes de pasar a la siguiente.
+    restante = disponible
+    asignado = []
+    for clase in CLASES_ACREEDOR:
+        idx_c = tabla_ed.index[tabla_ed["Clase"] == clase]
+        deuda_c = float(tabla_ed.loc[idx_c, "Cuantía"].sum())
+        pago_c = min(restante, deuda_c)
+        restante -= pago_c
+        for i in idx_c:
+            parte = tabla_ed.loc[i, "Cuantía"] / deuda_c if deuda_c else 0
+            asignado.append((i, pago_c * parte))
+    tabla_ed["Pago estimado"] = 0.0
+    for i, v in asignado:
+        tabla_ed.loc[i, "Pago estimado"] = v
+    tabla_ed["Cobertura %"] = (tabla_ed["Pago estimado"] / tabla_ed["Cuantía"] * 100).round(1)
+    cobertura = (min(disponible, deuda_total) / deuda_total * 100) if deuda_total > 0 else 0
+    meses_total = (-(-deuda_total // cuota)) if cuota > 0 else None
+
+    r1, r2 = st.columns([1.2, 1])
+    with r1:
+        mensaje_plazo = f"Pagar el 100% tomaría unos {int(meses_total)} meses ({meses_total / 12:.1f} años)." if meses_total else "Con los datos actuales no hay excedente para pagar deudas."
+        st.markdown(
+            f"<div class='sim-res'><p>Cuota mensual estimada</p><p class='big'>$ {cuota:,.0f}</p>"
+            f"<p>Total disponible en {plazo} meses: <b style='color:#fff'>$ {disponible:,.0f}</b> · Deuda inventariada: <b style='color:#fff'>$ {deuda_total:,.0f}</b></p>"
+            f"<p style='margin-top:10px;'>Cobertura de la deuda: <b style='color:#E6C873; font-size:20px;'>{cobertura:.1f}%</b></p><p>{mensaje_plazo}</p></div>",
+            unsafe_allow_html=True,
+        )
+        st.progress(min(cobertura / 100, 1.0))
+    with r2:
+        if deuda_total > 0:
+            graf = tabla_ed.groupby("Clase")[["Cuantía", "Pago estimado"]].sum().reindex(CLASES_ACREEDOR).fillna(0).reset_index()
+            graf.columns = ["Clase", "Deuda", "Pago estimado"]
+            st.bar_chart(graf, x="Clase", y=["Deuda", "Pago estimado"], color=["#8A1F35", "#1F7A5C"], stack=False)
+        else:
+            st.markdown("<div class='vacio'>Agrega acreedores para ver el reparto.</div>", unsafe_allow_html=True)
+    if deuda_total > 0:
+        st.dataframe(tabla_ed[["Acreedor", "Clase", "Cuantía", "Pago estimado", "Cobertura %"]], use_container_width=True, hide_index=True)
+    st.markdown("<div class='aviso'><b>Herramienta orientativa.</b> No incluye intereses, actualización de créditos, costos del trámite ni las reglas específicas del procedimiento. La propuesta real debe ser definida y revisada por el abogado responsable.</div>", unsafe_allow_html=True)
+
+# --- NUEVO: REPORTES ---
+elif st.session_state.pagina_actual == 'Reportes':
+    st.markdown("<h1>Reportes y analítica</h1><p class='page-sub'>Una mirada rápida al estado del despacho.</p>", unsafe_allow_html=True)
+    if df_activos.empty:
+        st.info("Aún no hay datos suficientes para generar reportes.")
+    else:
+        activos_cc = set(df_activos["Cedula"].astype(str))
+        sen_r = senal_num(df_activos["Senal"]).clip(upper=4)
+        c1, c2 = st.columns(2)
+        with c1:
+            with st.container(border=True):
+                st.markdown("<p class='card-title'>Expedientes por fase</p>", unsafe_allow_html=True)
+                datos_fase = pd.DataFrame({"Fase": [f"{n + 1}. {nombre}" for n, _, nombre, _ in FASES], "Casos": [int((sen_r == n).sum()) for n, _, _, _ in FASES]})
+                st.bar_chart(datos_fase, x="Fase", y="Casos", color="#13294B")
+        with c2:
+            with st.container(border=True):
+                st.markdown("<p class='card-title'>Expedientes por fuerza</p>", unsafe_allow_html=True)
+                por_fuerza = df_activos["Fuerza"].astype(str).value_counts().reset_index()
+                por_fuerza.columns = ["Fuerza", "Casos"]
+                st.bar_chart(por_fuerza, x="Fuerza", y="Casos", color="#C9A24B")
+        c3, c4 = st.columns(2)
+        acr_activos = df_acr[df_acr["Cedula"].astype(str).isin(activos_cc)] if not df_acr.empty else df_acr
+        with c3:
+            with st.container(border=True):
+                st.markdown("<p class='card-title'>Deuda inventariada por clase</p>", unsafe_allow_html=True)
+                if acr_activos.empty:
+                    st.markdown("<div class='vacio'>Sin acreedores registrados.</div>", unsafe_allow_html=True)
+                else:
+                    t = acr_activos.copy()
+                    t["Cuantia"] = t["Cuantia"].apply(limpiar_num)
+                    cl = t.groupby("Clase")["Cuantia"].sum().reindex(CLASES_ACREEDOR).fillna(0).reset_index()
+                    st.bar_chart(cl, x="Clase", y="Cuantia", color="#8A1F35")
+        with c4:
+            with st.container(border=True):
+                st.markdown("<p class='card-title'>Principales acreedores</p>", unsafe_allow_html=True)
+                if acr_activos.empty:
+                    st.markdown("<div class='vacio'>Sin acreedores registrados.</div>", unsafe_allow_html=True)
+                else:
+                    t = acr_activos.copy()
+                    t["Cuantia"] = t["Cuantia"].apply(limpiar_num)
+                    top = t.groupby("Acreedor")["Cuantia"].sum().sort_values(ascending=False).head(6).reset_index()
+                    st.bar_chart(top, x="Acreedor", y="Cuantia", color="#2F6DB5", horizontal=True)
+        if es_jefa():
+            with st.container(border=True):
+                st.markdown("<p class='card-title'>Recaudo de honorarios</p>", unsafe_allow_html=True)
+                f_act = df_fin[df_fin["Cedula"].astype(str).isin(activos_cc)] if not df_fin.empty else df_fin
+                hon_t = sum(limpiar_num(v) for v in f_act["Honorarios"]) if not f_act.empty else 0
+                abo_t = sum(limpiar_num(v) for v in f_act["Abonado"]) if not f_act.empty else 0
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Honorarios pactados", f"$ {hon_t:,.0f}")
+                m2.metric("Recaudado", f"$ {abo_t:,.0f}")
+                m3.metric("Por cobrar", f"$ {max(hon_t - abo_t, 0):,.0f}")
+                st.progress(min(abo_t / hon_t, 1.0) if hon_t > 0 else 0.0, text=f"{(abo_t / hon_t * 100) if hon_t > 0 else 0:.0f}% del total pactado")
+            if not df_log.empty:
+                with st.container(border=True):
+                    st.markdown("<p class='card-title'>Actividad por usuario</p>", unsafe_allow_html=True)
+                    act_u = df_log["Usuario"].astype(str).value_counts().head(8).reset_index()
+                    act_u.columns = ["Usuario", "Acciones"]
+                    st.bar_chart(act_u, x="Usuario", y="Acciones", color="#6B5BA6")
+
 # --- 7. TAREAS ---
 elif st.session_state.pagina_actual == 'Tareas':
-    st.markdown("<h1>✅ Tablero de Misiones Privado</h1>", unsafe_allow_html=True)
-    st.markdown("<div class='module-card module-card-blue'>", unsafe_allow_html=True)
-    with st.form("form_tareas"):
-        col1, col2 = st.columns([2, 1])
-        with col1: desc_tar = st.text_input("Descripción de la Tarea")
-        with col2: asignado = st.selectbox("Asignar a:", df_usr["Alias"].tolist())
-        if st.form_submit_button("ENVIAR MISIÓN"):
-            if desc_tar:
-                n_t = pd.DataFrame([{"ID_Tar": f"TAR-{hoy.strftime('%H%M%S')}", "Tarea": desc_tar, "Asignado": asignado, "Creador": st.session_state.alias_actual, "Estado": "Pendiente", "Fecha": hoy.strftime("%Y-%m-%d")}])
-                guardar_tabla(pd.concat([df_tar, n_t], ignore_index=True), "tareas"); st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("<h1>Tablero de tareas</h1><p class='page-sub'>Asigna trabajo al equipo y marca lo que ya está hecho.</p>", unsafe_allow_html=True)
+    with st.expander("➕ Nueva tarea", expanded=df_tar.empty):
+        with st.form("form_tareas", clear_on_submit=True):
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                desc_tar = st.text_input("Descripción de la tarea")
+            with col2:
+                asignado = st.selectbox("Asignar a:", df_usr["Alias"].tolist())
+            if st.form_submit_button("ENVIAR TAREA"):
+                if desc_tar:
+                    n_t = pd.DataFrame([{"ID_Tar": f"TAR-{uuid.uuid4().hex[:8]}", "Tarea": desc_tar, "Asignado": asignado, "Creador": st.session_state.alias_actual, "Estado": "Pendiente", "Fecha": ahora_colombia().strftime("%Y-%m-%d")}])
+                    guardar_tabla(pd.concat([df_tar, n_t], ignore_index=True), "tareas")
+                    registrar_log("TAREAS", f"Asignó una tarea a {asignado}")
+                    st.rerun()
+    vista = st.radio("Mostrar", ["Mis tareas", "Todas"], horizontal=True, key="tar_vista")
+    base_t = df_tar if vista == "Todas" else df_tar[df_tar["Asignado"].astype(str) == str(st.session_state.alias_actual)]
+    pend = base_t[base_t["Estado"].astype(str) == "Pendiente"]
+    hechas = base_t[base_t["Estado"].astype(str) != "Pendiente"]
+    cp, ch = st.columns(2)
+    with cp:
+        with st.container(border=True):
+            st.markdown(f"<p class='card-title'>Pendientes · {len(pend)}</p>", unsafe_allow_html=True)
+            if pend.empty:
+                st.markdown("<div class='vacio'>Nada pendiente 🙌</div>", unsafe_allow_html=True)
+            for i, (_, t) in enumerate(pend.iterrows()):
+                c_t, c_b = st.columns([5, 1], vertical_alignment="center")
+                c_t.markdown(f"<div class='task'>{escape(str(t['Tarea']))}<em>para {escape(str(t['Asignado']))} · de {escape(str(t['Creador']))} · {escape(str(t['Fecha']))}</em></div>", unsafe_allow_html=True)
+                with c_b.container(key=f"mini_tp_{i}"):
+                    st.button("✓", key=f"tp_{i}_{t['ID_Tar']}", on_click=cambiar_estado_tarea, args=(t['ID_Tar'], "Hecha"), help="Marcar como hecha")
+    with ch:
+        with st.container(border=True):
+            st.markdown(f"<p class='card-title'>Hechas · {len(hechas)}</p>", unsafe_allow_html=True)
+            if hechas.empty:
+                st.markdown("<div class='vacio'>Aún no hay tareas completadas.</div>", unsafe_allow_html=True)
+            for i, (_, t) in enumerate(hechas.tail(8).iloc[::-1].iterrows()):
+                c_t, c_b = st.columns([5, 1], vertical_alignment="center")
+                c_t.markdown(f"<div class='task' style='opacity:.65; text-decoration:line-through;'>{escape(str(t['Tarea']))}<em>{escape(str(t['Asignado']))}</em></div>", unsafe_allow_html=True)
+                with c_b.container(key=f"mini_th_{i}"):
+                    st.button("↩", key=f"th_{i}_{t['ID_Tar']}", on_click=cambiar_estado_tarea, args=(t['ID_Tar'], "Pendiente"), help="Reabrir")
+
 
 # --- 8. MEMORIALES ---
 elif st.session_state.pagina_actual == 'Memoriales':
@@ -1612,25 +2419,66 @@ elif st.session_state.pagina_actual == 'Memoriales':
             st.download_button("📥 DESCARGAR MEMORIAL PDF", f, file_name=st.session_state['memorial_pdf'], use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-# --- 9. AGENDA ---
+# --- 9. CALENDARIO Y CITAS ---
 elif st.session_state.pagina_actual == 'Agenda':
-    st.markdown("<h1>📅 Agenda de Citas</h1>", unsafe_allow_html=True)
-    st.markdown("<div class='module-card module-card-blue'>", unsafe_allow_html=True)
-    with st.form("form_aud"):
-        c1, c2 = st.columns(2)
-        with c1:
+    st.markdown("<h1>Calendario y citas</h1><p class='page-sub'>Audiencias, citas y vencimientos del mes en una sola vista.</p>", unsafe_allow_html=True)
+    hoy_cal = ahora_colombia().date()
+    anio_c, mes_c = st.session_state.get("cal_mes", (hoy_cal.year, hoy_cal.month))
+    ini_mes = datetime(anio_c, mes_c, 1).date()
+    fin_mes = datetime(anio_c, mes_c, calendar.monthrange(anio_c, mes_c)[1]).date()
+    eventos_mes = [e for e in eventos_rango(ini_mes, fin_mes) if ini_mes <= e["fecha"].date() <= fin_mes]
+    por_dia = {}
+    for e in eventos_mes:
+        por_dia.setdefault(e["fecha"].day, []).append(e)
+
+    n1, n2, n3, n4 = st.columns([1, 4, 1, 1.4], vertical_alignment="center")
+    n1.button("◀ Anterior", key="cal_prev", on_click=mover_mes, args=(-1,), use_container_width=True)
+    n2.markdown(f"<div class='cal-titulo'>{MESES_ES[mes_c - 1].capitalize()} {anio_c}</div>", unsafe_allow_html=True)
+    n3.button("Siguiente ▶", key="cal_next", on_click=mover_mes, args=(1,), use_container_width=True)
+    n4.button("📍 Ir a hoy", key="cal_hoy", on_click=mes_actual, use_container_width=True)
+
+    cabecera = "".join(f"<div class='cal-h'>{d}</div>" for d in ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"])
+    celdas = []
+    for semana in calendar.monthcalendar(anio_c, mes_c):
+        for dia in semana:
+            if dia == 0:
+                celdas.append("<div class='cal-d fuera'></div>")
+                continue
+            evs = por_dia.get(dia, [])
+            clase = "cal-d hoy" if (anio_c, mes_c, dia) == (hoy_cal.year, hoy_cal.month, hoy_cal.day) else "cal-d"
+            chips = ""
+            for e in evs[:3]:
+                prefijo = e["fecha"].strftime("%H:%M ") if e["hora"] else ""
+                chips += f"<div class='chip' style='--c:{e['color']};' title='{escape(e['titulo'])} · {escape(e['detalle'])}'>{prefijo}{escape(e['titulo'][:24])}</div>"
+            extra = f"<div class='mas'>+{len(evs) - 3} más</div>" if len(evs) > 3 else ""
+            celdas.append(f"<div class='{clase}'><span class='n'>{dia}</span>{chips}{extra}</div>")
+    st.markdown(f"<div class='cal'>{cabecera}{''.join(celdas)}</div>", unsafe_allow_html=True)
+
+    col_l, col_f = st.columns([1.3, 1])
+    with col_l:
+        with st.container(border=True):
+            st.markdown(f"<p class='card-title'>Compromisos de {MESES_ES[mes_c - 1]}</p>", unsafe_allow_html=True)
+            st.markdown(html_timeline(eventos_mes, hoy_cal), unsafe_allow_html=True)
+            if eventos_mes:
+                st.download_button("📅 Exportar el mes (.ics)", ics_eventos(eventos_mes), file_name=f"agenda_{anio_c}_{mes_c:02d}.ics", mime="text/calendar")
+    with col_f:
+        st.markdown("<p class='card-title' style='margin-top:4px;'>➕ Agendar cita o audiencia</p>", unsafe_allow_html=True)
+        with st.form("form_aud", clear_on_submit=True):
             cl_aud = st.selectbox("Expediente", df_activos["Cedula"].astype(str) + " - " + df_activos["Nombre"] if not df_activos.empty else ["Sin Clientes"])
             motivo = st.text_input("Motivo")
-        with c2:
-            fecha_a = st.date_input("Fecha")
-            hora_a = st.time_input("Hora")
-        if st.form_submit_button("AGENDAR"):
-            if cl_aud != "Sin Clientes":
-                cc_a, nom_a = cl_aud.split(" - ")[0], cl_aud.split(" - ")[1]
-                n_au = pd.DataFrame([{"ID_Aud": f"AUD-{hoy.strftime('%H%M%S')}", "Cedula": str(cc_a), "Cliente": nom_a, "Fecha_Hora": f"{fecha_a} {hora_a}", "Motivo": motivo}])
-                guardar_tabla(pd.concat([df_aud, n_au], ignore_index=True), "audiencias"); st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
-    
+            f1, f2 = st.columns(2)
+            fecha_a = f1.date_input("Fecha", value=hoy_cal)
+            hora_a = f2.time_input("Hora")
+            if st.form_submit_button("AGENDAR"):
+                if cl_aud != "Sin Clientes":
+                    cc_a, nom_a = cl_aud.split(" - ", 1)
+                    n_au = pd.DataFrame([{"ID_Aud": f"AUD-{uuid.uuid4().hex[:8]}", "Cedula": str(cc_a), "Cliente": nom_a, "Fecha_Hora": f"{fecha_a} {hora_a}", "Motivo": motivo}])
+                    guardar_tabla(pd.concat([df_aud, n_au], ignore_index=True), "audiencias")
+                    registrar_log("AGENDA", f"Agendó '{motivo}' para {cc_a} el {fecha_a}")
+                    st.session_state.cal_mes = (fecha_a.year, fecha_a.month)
+                    st.rerun()
+
+
 # --- 10. FINANZAS ---
 elif st.session_state.pagina_actual == 'Finanzas':
     if st.session_state.rol_actual != "Administrador (Jefa)": st.error("⛔ DENEGADO")
@@ -1654,7 +2502,7 @@ elif st.session_state.pagina_actual == 'Finanzas':
             
             pdf.set_font("Helvetica", 'B', 10)
             pdf.cell(0, 6, txt=cln(f"Recibo No: {recibo_id}"), ln=True, align='R')
-            pdf.cell(0, 6, txt=cln(f"Fecha de Emisión: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"), ln=True, align='R')
+            pdf.cell(0, 6, txt=cln(f"Fecha de Emisión: {ahora_colombia().strftime('%Y-%m-%d %H:%M:%S')}"), ln=True, align='R')
             pdf.ln(10)
             
             pdf.set_fill_color(240, 240, 240)
