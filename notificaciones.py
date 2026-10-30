@@ -58,7 +58,7 @@ def enviar_telegram(texto, chat_id=None):
         return False, "No se pudo conectar con Telegram."
 
 
-def enviar_alertas_vencimientos(df_ven, hoy):
+def enviar_alertas_vencimientos(df_ven, hoy, destino=""):
     """Arma y envía las alertas de vencimientos. Devuelve (ok_mail, msg_mail, ok_tg, msg_tg)."""
     urgentes = []
     if not df_ven.empty:
@@ -86,15 +86,16 @@ def enviar_alertas_vencimientos(df_ven, hoy):
 
     texto = f"⚖️ Alertas Insolvencia OS\n\n{cuerpo}"
     html = "<h3>⚖️ Alertas Insolvencia OS</h3><p>" + escape(cuerpo).replace("\n", "<br>") + "</p>"
-    destino = st.secrets.get("alertas_email_destino", st.secrets.get("gmail_usuario", ""))
-
+    if not destino:
+        return False, "Tu firma no tiene un correo de avisos configurado. Pídele a soporte que lo registre.", False, "Telegram no aplica."
     ok_mail, msg_mail = enviar_email(destino, "⚖️ Alertas de vencimientos", html, texto)
-    ok_tg, msg_tg = enviar_telegram(texto)
-    return ok_mail, msg_mail, ok_tg, msg_tg
+    return ok_mail, msg_mail, False, "Telegram no se usa para avisos de las firmas."
 
 
-def notificar_nuevo_vencimiento(cliente, asunto, fecha_limite):
-    """Avisa por correo y Telegram apenas se programa un vencimiento. Nunca rompe el guardado."""
+def notificar_nuevo_vencimiento(cliente, asunto, fecha_limite, destino=""):
+    """Avisa por correo a la firma cuando se programa un vencimiento. Nunca rompe el guardado."""
+    if not destino:
+        return
     try:
         texto = (
             "⚖️ Nuevo vencimiento programado\n\n"
@@ -108,8 +109,6 @@ def notificar_nuevo_vencimiento(cliente, asunto, fecha_limite):
             f"<b>Asunto:</b> {escape(str(asunto))}<br>"
             f"<b>Fecha límite:</b> {escape(str(fecha_limite))}</p>"
         )
-        destino = st.secrets.get("alertas_email_destino", st.secrets.get("gmail_usuario", ""))
         enviar_email(destino, "⚖️ Nuevo vencimiento programado", html, texto)
-        enviar_telegram(texto)
     except Exception as e:
         print(f"⚠️ No se pudo notificar el nuevo vencimiento: {type(e).__name__}")
