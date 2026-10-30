@@ -8,71 +8,16 @@ import base64
 import random
 import uuid
 import calendar
+import re
 from datetime import datetime, timedelta, timezone
 import time
 import requests
 import json
-import cloudscraper
-import smtplib
-import ssl
-import requests
-import streamlit as st
-from email.message import EmailMessage
-
-
-def enviar_email(destinatario, asunto, cuerpo_html, cuerpo_texto=""):
-    """Envía un correo por Gmail SMTP. Devuelve (ok, mensaje)."""
-    try:
-        remitente = st.secrets["gmail_usuario"]
-        clave = st.secrets["gmail_app_password"]
-        nombre = st.secrets.get("gmail_nombre_remitente", "Insolvencia OS")
-        if not destinatario:
-            return False, "No hay correo de destino."
-
-        msg = EmailMessage()
-        msg["Subject"] = asunto
-        msg["From"] = f"{nombre} <{remitente}>"
-        msg["To"] = destinatario
-        msg.set_content(cuerpo_texto or "Este mensaje requiere un lector de correo con soporte HTML.")
-        msg.add_alternative(cuerpo_html, subtype="html")
-
-        contexto = ssl.create_default_context()
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=contexto, timeout=20) as servidor:
-            servidor.login(remitente, clave)
-            servidor.send_message(msg)
-        return True, "Correo enviado."
-    except KeyError as e:
-        return False, f"Falta el secreto {e} en Streamlit Secrets."
-    except smtplib.SMTPAuthenticationError:
-        return False, "Gmail rechazó la contraseña de aplicación."
-    except Exception as e:
-        print(f"⚠️ Error enviando correo: {type(e).__name__}")
-        return False, f"No se pudo enviar el correo ({type(e).__name__})."
-
-
-def enviar_telegram(texto, chat_id=None):
-    """Envía un mensaje por Telegram. Devuelve (ok, mensaje)."""
-    try:
-        token = st.secrets["telegram_bot_token"]
-        destino = chat_id or st.secrets["telegram_chat_id"]
-        r = requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": destino, "text": texto},
-            timeout=15
-        )
-        if r.status_code == 200:
-            return True, "Telegram enviado."
-        return False, f"Telegram respondió con error {r.status_code}."
-    except KeyError as e:
-        return False, f"Falta el secreto {e} en Streamlit Secrets."
-    except requests.RequestException as e:
-        print(f"⚠️ Error de red con Telegram: {type(e).__name__}")
-        return False, "No se pudo conectar con Telegram."
-
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from html import escape
 from notificaciones import enviar_email, enviar_telegram, enviar_alertas_vencimientos, notificar_nuevo_vencimiento
+import multifirma as mf
 
 
 def ahora_colombia():
@@ -80,69 +25,6 @@ def ahora_colombia():
     return datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=5)
 
 st.set_page_config(page_title="Insolvencia OS | Enterprise", page_icon="⚖", layout="wide", initial_sidebar_state="collapsed")
-
-# ==========================================
-# MOTOR OSINT: BYPASS DE LA RAMA JUDICIAL
-# ==========================================
-@st.cache_data(ttl=3600, show_spinner=False)
-def consultar_rama_judicial(cedula: str):
-    url = "https://consultaprocesos.ramajudicial.gov.co/api/v1/Procesos/Consulta/PorTipoNumeroIdentificacion"
-    params = {
-        "tipoPersona": 1, 
-        "numeroIdentificacion": str(cedula).strip(),
-        "SoloActivos": "false"
-    }
-    
-    # Huella digital falsificada: Simulamos ser Google Chrome en un Windows real
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "es-CO,es-419;q=0.9,es;q=0.8",
-        "Origin": "https://consultaprocesos.ramajudicial.gov.co",
-        "Referer": "https://consultaprocesos.ramajudicial.gov.co/Procesos/NumeroDocumento",
-        "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-origin"
-    }
-    
-    try:
-        # Creamos el Scraper para evadir el Firewall (Cloudflare/Imperva)
-        scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True})
-        
-        response = scraper.get(url, params=params, headers=headers, timeout=20)
-        
-        # Si el servidor nos responde bien, procesamos el JSON
-        if response.status_code == 200:
-            try:
-                data = response.json()
-            except:
-                return "WAF_BLOCK" # Detecta si nos mandaron un HTML de bloqueo en vez de datos
-                
-            procesos = data.get("procesos", [])
-            if not procesos:
-                return pd.DataFrame() # Vacío pero exitoso
-                
-            lista_procesos = []
-            for p in procesos:
-                lista_procesos.append({
-                    "Radicado": p.get("idProceso", "N/A"),
-                    "Juzgado": p.get("despacho", "N/A"),
-                    "Demandante": p.get("sujetosProcesales", "N/A"),
-                    "Proceso": p.get("claseProceso", "N/A"),
-                    "Fecha": p.get("fechaUltimaActuacion", "")[:10]
-                })
-            return pd.DataFrame(lista_procesos)
-        else:
-            return f"ERROR_HTTP_{response.status_code}"
-            
-    except Exception as e:
-        print(f"⚠️ Error Bypass: {e}")
-        return "TIMEOUT"
-                                   
-        
 
 try:
     from fpdf import FPDF
@@ -179,6 +61,8 @@ CARPETA_RAIZ_DRIVE_ID = "1MC6wHXaV557prpKV-KCRc8yeCdphD6U8"
 
 # ID de la Papelera en Drive
 CARPETA_PAPELERA_DRIVE_ID = "1MGBXOKbPuAE6xsf53AcCjwMFE_yzDbir"
+# Solo se usan para migrar la firma original a Control_Central; las demás firmas tienen sus propias carpetas.
+mf.configurar_legado(CARPETA_RAIZ_DRIVE_ID, CARPETA_PAPELERA_DRIVE_ID)
 
 # ==========================================
 # GESTOR DE GOOGLE DRIVE VÍA API REST (CERO SEGMENTATION FAULT)
@@ -205,7 +89,7 @@ def obtener_token_fresco():
 def estructurar_carpetas(cc, nom):
     """Asegura la carpeta del cliente en Drive una sola vez por sesión."""
     ya = st.session_state.setdefault("_carpetas_ok", set())
-    clave = f"{cc}|{nom}"
+    clave = f"{_fid()}|{cc}|{nom}"
     if clave in ya:
         return False
     resultado = _estructurar_carpetas_real(cc, nom)
@@ -221,14 +105,14 @@ def _estructurar_carpetas_real(cc, nom):
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
         nombre_carpeta_cliente = f"{cc} - {nom}"
         
-        query = f"name='{nombre_carpeta_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        query = f"name='{nombre_carpeta_cliente}' and '{_boveda_id()}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
         res = requests.get(f"https://www.googleapis.com/drive/v3/files?q={requests.utils.quote(query)}", headers=headers).json()
         archivos = res.get('files', [])
         
         if not archivos:
             meta = {
                 'name': nombre_carpeta_cliente,
-                'parents': [CARPETA_RAIZ_DRIVE_ID],
+                'parents': [_boveda_id()],
                 'mimeType': 'application/vnd.google-apps.folder'
             }
             crear_cli = requests.post("https://www.googleapis.com/drive/v3/files", headers=headers, json=meta).json()
@@ -249,7 +133,7 @@ def _estructurar_carpetas_real(cc, nom):
 
 def obtener_id_subcarpeta_drive(cc, nom, nombre_subcarpeta):
     """Obtiene el ID de una subcarpeta interna del cliente (con memoria para no repetir llamadas)"""
-    clave = f"{cc}|{nom}|{nombre_subcarpeta}"
+    clave = f"{_fid()}|{cc}|{nom}|{nombre_subcarpeta}"
     memoria = _almacen_cache()["carpetas"]
     if clave in memoria:
         return memoria[clave]
@@ -258,7 +142,7 @@ def obtener_id_subcarpeta_drive(cc, nom, nombre_subcarpeta):
         headers = {"Authorization": f"Bearer {token}"}
         nombre_carpeta_cliente = f"{cc} - {nom}"
         
-        q1 = f"name='{nombre_carpeta_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        q1 = f"name='{nombre_carpeta_cliente}' and '{_boveda_id()}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
         r1 = requests.get(f"https://www.googleapis.com/drive/v3/files?q={requests.utils.quote(q1)}", headers=headers).json().get('files', [])
         if not r1: return None
         cliente_id = r1[0]['id']
@@ -343,13 +227,13 @@ def mover_a_papelera_drive(cc, nom):
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
         nombre_carpeta_cliente = f"{cc} - {nom}"
         
-        query = f"name='{nombre_carpeta_cliente}' and '{CARPETA_RAIZ_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        query = f"name='{nombre_carpeta_cliente}' and '{_boveda_id()}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
         res = requests.get(f"https://www.googleapis.com/drive/v3/files?q={requests.utils.quote(query)}", headers=headers).json().get('files', [])
         
         if res:
             cid = res[0]['id']
             padres = ",".join(res[0].get('parents', []))
-            params = {"addParents": CARPETA_PAPELERA_DRIVE_ID, "removeParents": padres}
+            params = {"addParents": _papelera_id(), "removeParents": padres}
             requests.patch(f"https://www.googleapis.com/drive/v3/files/{cid}", headers=headers, params=params)
             return True
         return False
@@ -364,13 +248,13 @@ def restaurar_de_papelera_drive(cc, nom):
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
         nombre_carpeta_cliente = f"{cc} - {nom}"
         
-        query = f"name='{nombre_carpeta_cliente}' and '{CARPETA_PAPELERA_DRIVE_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        query = f"name='{nombre_carpeta_cliente}' and '{_papelera_id()}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
         res = requests.get(f"https://www.googleapis.com/drive/v3/files?q={requests.utils.quote(query)}", headers=headers).json().get('files', [])
         
         if res:
             cid = res[0]['id']
             padres = ",".join(res[0].get('parents', []))
-            params = {"addParents": CARPETA_RAIZ_DRIVE_ID, "removeParents": padres}
+            params = {"addParents": _boveda_id(), "removeParents": padres}
             requests.patch(f"https://www.googleapis.com/drive/v3/files/{cid}", headers=headers, params=params)
             return True
         return False
@@ -379,42 +263,13 @@ def restaurar_de_papelera_drive(cc, nom):
 
 
 # Conexión Global a Google Sheets
-@st.cache_resource
-def conectar_gsheets():
-    if not GSPREAD_DISPONIBLE: return None
-    try:
-        creds = Credentials.from_authorized_user_info({
-            "client_id": st.secrets["google_client_id"],
-            "client_secret": st.secrets["google_client_secret"],
-            "refresh_token": st.secrets["google_refresh_token"],
-            "token_uri": "https://oauth2.googleapis.com/token"
-        })
-        client = gspread.authorize(creds)
-        
-        nombre_hoja = "DB_Insolvencia_Master"
-        
-        try:
-            sheet = client.open(nombre_hoja)
-        except gspread.SpreadsheetNotFound:
-            sheet = client.create(nombre_hoja)
-            pestañas = ["clientes", "finanzas", "actuaciones", "vencimientos", "acreedores", "audiencias", "tareas", "usuarios", "logs"]
-            first_sheet = sheet.get_sheet_by_id(0)
-            first_sheet.update_title(pestañas[0])
-            for p in pestañas[1:]:
-                sheet.add_worksheet(title=p, rows="100", cols="20")
-        
-        return sheet
-    except Exception as e:
-        st.error(f"🚨 ERROR CRÍTICO GSHEETS: {e}")
-        return None
-
-gc_sheet = conectar_gsheets()
-
 # ==========================================
-# 1. CORE & CONFIGURACIÓN DE SESIÓN Y GSHEETS
+# 1. CORE: SESIÓN, FIRMA ACTIVA Y CAPA DE DATOS
 # ==========================================
-
 if 'autenticado' not in st.session_state: st.session_state.autenticado = False
+if 'es_superadmin' not in st.session_state: st.session_state.es_superadmin = False
+if 'firma_ctx' not in st.session_state: st.session_state.firma_ctx = {}
+if 'debe_cambiar_clave' not in st.session_state: st.session_state.debe_cambiar_clave = False
 if 'usuario_actual' not in st.session_state: st.session_state.usuario_actual = ""
 if 'rol_actual' not in st.session_state: st.session_state.rol_actual = ""
 if 'alias_actual' not in st.session_state: st.session_state.alias_actual = ""
@@ -424,63 +279,86 @@ if 'pagina_actual' not in st.session_state: st.session_state.pagina_actual = 'Da
 if 'kicked' not in st.session_state: st.session_state.kicked = False
 if 'kicked_reason' not in st.session_state: st.session_state.kicked_reason = ""
 
+COLS_USR = mf.COLS["usuarios"]
+
+
 def cambiar_pagina(p): st.session_state.pagina_actual = p
+
+
+def _ctx():
+    return st.session_state.get("firma_ctx") or {}
+
+
+def _fid():
+    return str(_ctx().get("Firma_ID", ""))
+
+
+def _boveda_id():
+    return str(_ctx().get("Boveda_ID", ""))
+
+
+def _papelera_id():
+    return str(_ctx().get("Papelera_ID", ""))
+
+
+def cerrar_sesion():
+    """Cierra la sesión y borra todo lo que quedó en memoria de la firma, para que nada se cruce."""
+    for k in list(st.session_state.keys()):
+        if k.startswith(("sel_", "sim_", "dlbuf_", "kb_", "tgl_bov_", "busq", "cal_", "tar_", "_carpetas_ok", "aviso_", "sa_")):
+            st.session_state.pop(k, None)
+    st.session_state.update(autenticado=False, es_superadmin=False, debe_cambiar_clave=False, firma_ctx={},
+                            usuario_actual="", rol_actual="", alias_actual="", avatar_path="", session_token="",
+                            pagina_actual="Dashboard", cliente_foco="")
+
 
 TTL_TABLAS = 600
 
 
-def _hoja(nombre_tabla):
-    hojas = _almacen_cache()["hojas"]
-    if nombre_tabla not in hojas:
-        hojas[nombre_tabla] = gc_sheet.worksheet(nombre_tabla)
-    return hojas[nombre_tabla]
-
-
-def _leer_tabla_remota(nombre_tabla, columnas_def):
-    """Devuelve (DataFrame, vino_de_sheets)."""
-    if gc_sheet:
-        try:
-            data = _hoja(nombre_tabla).get_all_records()
-            df_gs = pd.DataFrame(data)
-            if df_gs.empty:
-                return pd.DataFrame(columns=columnas_def), True
-            return df_gs, True
-        except Exception as e:
-            print(f"⚠️ Error leyendo {nombre_tabla} en Sheets: {type(e).__name__}")
-            _almacen_cache()["hojas"].pop(nombre_tabla, None)
-
-    arch = f"db_{nombre_tabla}.csv"
-    if not os.path.exists(arch):
-        pd.DataFrame(columns=columnas_def).to_csv(arch, index=False)
-    return pd.read_csv(arch), False
-
-
 def leer_tabla(nombre_tabla, columnas_def):
-    """Lee una tabla con caché por tabla (10 min). Se refresca sola al guardarla."""
+    """Lee una tabla de LA FIRMA DE LA SESIÓN. La memoria rápida se separa por firma."""
+    fid, ref = _fid(), str(_ctx().get("Sheet_ID", ""))
+    if not fid or not ref:
+        raise mf.ErrorDatos("No hay una firma activa en esta sesión.")
     tablas = _almacen_cache()["tablas"]
-    guardado = tablas.get(nombre_tabla)
+    clave = (fid, nombre_tabla)
+    guardado = tablas.get(clave)
     if guardado and (time.time() - guardado[0]) < TTL_TABLAS:
         return guardado[1].copy()
-    df, desde_sheets = _leer_tabla_remota(nombre_tabla, columnas_def)
-    # Si Sheets falló, la copia local solo dura 30 s para reintentar pronto.
-    marca = time.time() if desde_sheets else time.time() - TTL_TABLAS + 30
-    tablas[nombre_tabla] = (marca, df)
+    df = mf.leer_registros(ref, nombre_tabla, columnas_def)
+    tablas[clave] = (time.time(), df)
     return df.copy()
 
 
 def guardar_tabla(df, nombre_tabla):
-    arch = f"db_{nombre_tabla}.csv"
-    df.to_csv(arch, index=False)
-    if gc_sheet:
-        try:
-            worksheet = _hoja(nombre_tabla)
-            worksheet.clear()
-            worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
-        except Exception as e:
-            print(f"Error guardando en GSheets {nombre_tabla}: {e}")
-            _almacen_cache()["hojas"].pop(nombre_tabla, None)
+    """Guarda en la hoja de la firma de la sesión. Si falla, lanza un error visible: nunca se pierde en silencio."""
+    fid, ref = _fid(), str(_ctx().get("Sheet_ID", ""))
+    if not fid or not ref:
+        raise mf.ErrorDatos("No hay una firma activa en esta sesión.")
+    mf.escribir_registros(ref, nombre_tabla, df)
+    _almacen_cache()["tablas"].pop((fid, nombre_tabla), None)
 
-    _almacen_cache()["tablas"].pop(nombre_tabla, None)
+
+def cambiar_mi_clave(actual, nueva, confirmacion, exigir_actual=True):
+    motivo = mf.validar_clave_nueva(nueva)
+    if motivo:
+        return False, motivo
+    if nueva != confirmacion:
+        return False, "La confirmación no coincide."
+    df_u = leer_tabla("usuarios", COLS_USR).astype(object)
+    m = df_u["Usuario"].astype(str).str.lower() == str(st.session_state.usuario_actual).lower()
+    if not m.any():
+        return False, "No se encontró tu usuario."
+    almacenado = df_u.loc[m, "Password"].iloc[0]
+    if exigir_actual and not mf.verificar_password(actual, almacenado):
+        return False, "La contraseña actual no es correcta."
+    if mf.verificar_password(nueva, almacenado):
+        return False, "La nueva contraseña debe ser distinta de la actual."
+    df_u.loc[m, "Password"] = mf.hash_password(nueva)
+    df_u.loc[m, "Cambiar_Clave"] = "No"
+    guardar_tabla(df_u, "usuarios")
+    registrar_log("SEGURIDAD", "Cambió su contraseña")
+    return True, "Contraseña actualizada."
+
 
 # ==========================================
 # 2. MOTOR CSS: SAAS CORPORATIVO ADAPTATIVO (MÓVIL & DESKTOP)
@@ -775,45 +653,8 @@ a[data-testid^="stBaseLinkButton"]{text-decoration:none !important; text-align:c
 # 3. BASE DE DATOS Y CARGA CLOUD
 # ==========================================
 CARP_EXP, CARP_PLA, CARP_PAP, CARP_AVATAR = "Expedientes", "Plantillas", "Papelera", "Avatares"
-ABOGADOS = ["David Alexander Arias Posse", "Maria Jose Ospino Perez", "Yeiker Cardona"]
 
 for c in [CARP_EXP, CARP_PLA, CARP_PAP, CARP_AVATAR]: os.makedirs(c, exist_ok=True)
-for a in ABOGADOS: os.makedirs(os.path.join(CARP_PLA, a), exist_ok=True)
-
-df_cli = leer_tabla("clientes", ["Cedula", "Nombre", "Fuerza", "Telefono", "Email", "Deuda_Est", "Ingresos", "Senal", "F_Actualizacion", "Estado", "F_Borrado"])
-df_fin = leer_tabla("finanzas", ["Cedula", "Honorarios", "Abonado"])
-df_act = leer_tabla("actuaciones", ["ID_Act", "Cedula", "Fecha", "Tipo", "Juzgado", "Radicado", "Anotacion"])
-df_log = leer_tabla("logs", ["Timestamp", "Usuario", "Modulo", "Accion"])
-df_ven = leer_tabla("vencimientos", ["ID_Ven", "Cedula", "Cliente", "Asunto", "Fecha_Limite", "Estado"])
-df_acr = leer_tabla("acreedores", ["ID_Acr", "Cedula", "Acreedor", "Cuantia", "Clase"])
-df_aud = leer_tabla("audiencias", ["ID_Aud", "Cedula", "Cliente", "Fecha_Hora", "Motivo"])
-df_tar = leer_tabla("tareas", ["ID_Tar", "Tarea", "Asignado", "Creador", "Estado", "Fecha"])
-df_usr = leer_tabla("usuarios", ["Usuario", "Password", "Rol", "Creador", "Alias", "Avatar_Path", "Session_Token"])
-
-if df_usr.empty:
-    df_usr = pd.DataFrame([{"Usuario": "admin", "Password": "123", "Rol": "Administrador (Jefa)", "Creador": "Sistema", "Alias": "Administración", "Avatar_Path": "", "Session_Token": ""}])
-    guardar_tabla(df_usr, "usuarios")
-
-if "Alias" not in df_usr.columns: df_usr["Alias"] = df_usr["Usuario"]
-if "Avatar_Path" not in df_usr.columns: df_usr["Avatar_Path"] = ""
-if "Session_Token" not in df_usr.columns: df_usr["Session_Token"] = ""
-
-hoy = ahora_colombia()
-
-cambios_bd = False
-for idx, r in df_cli[df_cli["Estado"] == "Borrado"].iterrows():
-    if pd.notna(r["F_Borrado"]) and str(r["F_Borrado"]).strip() != "":
-        try:
-            if (hoy - datetime.strptime(str(r["F_Borrado"])[:10], "%Y-%m-%d")).days >= 30:
-                rp = os.path.join(CARP_PAP, f"{r['Cedula']} - {r['Nombre']}")
-                if os.path.exists(rp): shutil.rmtree(rp)
-                df_cli = df_cli.drop(idx)
-                cambios_bd = True
-        except: pass
-if cambios_bd: guardar_tabla(df_cli, "clientes")
-
-df_activos = df_cli[df_cli["Estado"] == "Activo"].copy()
-df_papelera = df_cli[df_cli["Estado"] == "Borrado"].copy()
 
 def registrar_log(modulo, accion):
     try:
@@ -933,60 +774,195 @@ def mostrar_boveda(cc, nom):
             col.write("")
 
 # ==========================================
-# 4. PANTALLA DE LOGIN Y SEGURIDAD ANTICLONACIÓN
+# 4. ACCESO: CÓDIGO DE FIRMA + USUARIO + CONTRASEÑA
 # ==========================================
-if st.session_state.autenticado:
+def procesar_login(codigo, usuario, clave):
+    """Devuelve 'ok' o el mensaje de error que se le muestra al usuario."""
+    codigo, usuario = str(codigo).strip().lower(), str(usuario).strip()
+    if not codigo or not usuario or not clave:
+        return "Completa el código de firma, el usuario y la contraseña."
+    lim = f"{codigo}|{usuario.lower()}"
+    espera = mf.segundos_bloqueo(lim)
+    if espera > 0:
+        return f"Demasiados intentos fallidos. Intenta de nuevo en {espera // 60 + 1} minuto(s)."
+    invalido = "❌ Credenciales inválidas."
     try:
-        df_u_check = leer_tabla("usuarios", ["Usuario", "Password", "Rol", "Creador", "Alias", "Avatar_Path", "Session_Token"])
-        user_match = df_u_check[df_u_check["Usuario"].astype(str) == str(st.session_state.usuario_actual)]
-        if user_match.empty:
-            st.session_state.autenticado = False; st.session_state.kicked = True; st.session_state.kicked_reason = "Usuario revocado."
-            st.rerun()
-        else:
-            db_token = str(user_match.iloc[0].get("Session_Token", ""))
-            local_token = str(st.session_state.get("session_token", ""))
-            if db_token != local_token and db_token != "nan" and db_token != "":
-                st.session_state.autenticado = False; st.session_state.kicked = True; st.session_state.kicked_reason = "Sesión iniciada en otro equipo."
-                st.rerun()
-    except: pass
+        if codigo == mf.codigo_superadmin():
+            if not mf.login_superadmin(usuario, clave):
+                mf.registrar_fallo(lim)
+                return invalido
+            mf.limpiar_fallos(lim)
+            st.session_state.update(autenticado=True, es_superadmin=True, usuario_actual=usuario, rol_actual="Superadministrador",
+                                    alias_actual="Superadmin", firma_ctx={}, avatar_path="", session_token="", debe_cambiar_clave=False)
+            return "ok"
+        firma = mf.obtener_firma(codigo=codigo, fresco=True)
+        if not firma:
+            mf.registrar_fallo(lim)
+            return invalido
+        st.session_state.firma_ctx = firma
+        df_u = leer_tabla("usuarios", COLS_USR).astype(object)
+        m = df_u["Usuario"].astype(str).str.lower() == usuario.lower()
+        if not m.any() or not mf.verificar_password(clave, df_u.loc[m, "Password"].iloc[0]):
+            st.session_state.firma_ctx = {}
+            mf.registrar_fallo(lim)
+            return invalido
+        mf.limpiar_fallos(lim)
+        fila = df_u[m].iloc[0]
+        era_texto_plano = not mf.es_hash(fila["Password"])
+        debe_cambiar = str(fila.get("Cambiar_Clave", "")) == "Si" or (era_texto_plano and str(clave) == "123")
+        token = uuid.uuid4().hex
+        if era_texto_plano:
+            df_u.loc[m, "Password"] = mf.hash_password(clave)
+        df_u.loc[m, "Session_Token"] = token
+        df_u.loc[m, "Cambiar_Clave"] = "Si" if debe_cambiar else "No"
+        guardar_tabla(df_u, "usuarios")
+        st.session_state.update(autenticado=True, es_superadmin=False, usuario_actual=str(fila["Usuario"]), rol_actual=str(fila["Rol"]),
+                                alias_actual=str(fila.get("Alias", usuario)) or usuario, avatar_path=str(fila.get("Avatar_Path", "")),
+                                session_token=token, debe_cambiar_clave=debe_cambiar, bienvenida=True, pagina_actual="Dashboard")
+        registrar_log("AUTH", f"Inició sesión: {usuario}")
+        return "ok"
+    except mf.ErrorDatos as e:
+        st.session_state.firma_ctx = {}
+        return f"⚠️ {e}"
+
+
+def mostrar_bloqueo(lic):
+    """Pantalla cuando la firma está suspendida o con la suscripción vencida."""
+    st.markdown("<div style='height:4vh'></div>", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2:
+        with st.container(border=True):
+            st.markdown(f"<div class='login-hero' style='padding-top:8px;'><div class='seal' style='width:70px;height:70px;font-size:34px;'>🔒</div><h1 style='color:#0A1628 !important;'>Acceso detenido</h1></div>", unsafe_allow_html=True)
+            st.warning(lic["mensaje"])
+            contacto = str(mf._secreto("soporte_contacto", "")).strip()
+            st.markdown(f"Para reactivar el servicio, comunícate con soporte{(': **' + escape(contacto) + '**') if contacto else '.'}", unsafe_allow_html=True)
+            if lic["nivel"] == "vencida" and st.session_state.rol_actual == "Administrador (Jefa)":
+                st.markdown("**Tus datos siguen siendo tuyos.** Mientras regularizas el pago puedes descargarlos:")
+                for tabla in ("clientes", "finanzas", "actuaciones", "vencimientos", "acreedores", "audiencias", "tareas"):
+                    try:
+                        df_exp = leer_tabla(tabla, mf.COLS[tabla])
+                        st.download_button(f"⬇️ {tabla.capitalize()} (CSV)", df_exp.to_csv(index=False).encode("utf-8"), f"{tabla}.csv", "text/csv", key=f"exp_{tabla}")
+                    except mf.ErrorDatos as e:
+                        st.error(str(e))
+            st.button("🚪 Cerrar sesión", key="bloqueo_salir", on_click=cerrar_sesion)
+
 
 if not st.session_state.autenticado:
     st.markdown("""<style>
 [data-testid="stAppViewContainer"]{background:radial-gradient(800px 520px at 12% 8%, rgba(201,162,75,.30), transparent 60%), radial-gradient(760px 520px at 92% 92%, rgba(47,109,181,.5), transparent 60%), linear-gradient(135deg,#0A1628,#13294B) !important;}
 .login-hero h1{color:#FFFFFF !important;} .login-hero p{color:#B8C4DA !important;} [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p{color:#9FB0CC !important;}
-</style><div style="height:5vh"></div>""", unsafe_allow_html=True)
+</style><div style="height:4vh"></div>""", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
         if st.session_state.kicked:
-            st.error(f"🚨 ALERTA: {st.session_state.kicked_reason}"); st.session_state.kicked = False
+            st.error(f"🚨 ALERTA: {st.session_state.kicked_reason}")
+            st.session_state.kicked = False
         st.markdown("""<div class="login-hero"><div class="seal">⚖️</div><h1>Insolvencia OS</h1><p>Plataforma jurídica de gestión de expedientes · Acceso restringido</p></div>""", unsafe_allow_html=True)
         with st.form("login_form"):
-            user_input = st.text_input("👤 Usuario", placeholder="Tu usuario")
-            pass_input = st.text_input("🔑 Contraseña", type="password")
-            if st.form_submit_button("AUTENTICAR CREDENCIALES"):
-                df_u = leer_tabla("usuarios", ["Usuario", "Password", "Rol", "Creador", "Alias", "Avatar_Path", "Session_Token"])
-                user_match = df_u[(df_u["Usuario"].astype(str) == user_input) & (df_u["Password"].astype(str) == pass_input)]
-                if not user_match.empty:
-                    st.session_state.autenticado = True
-                    st.session_state.usuario_actual = user_input
-                    st.session_state.rol_actual = user_match.iloc[0]["Rol"]
-                    st.session_state.alias_actual = user_match.iloc[0].get("Alias", user_input)
-                    st.session_state.avatar_path = str(user_match.iloc[0].get("Avatar_Path", ""))
-                    nuevo_token = uuid.uuid4().hex
-                    st.session_state.session_token = nuevo_token
-                    df_u["Session_Token"] = df_u["Session_Token"].astype(object)
-                    df_u.loc[df_u["Usuario"].astype(str) == user_input, "Session_Token"] = nuevo_token
-                    guardar_tabla(df_u, "usuarios")
-                    registrar_log("AUTH", f"Inició sesión: {user_input}")
-                    st.session_state.bienvenida = True
+            codigo_in = st.text_input("🏢 Código de firma", placeholder="El que te entregó soporte")
+            user_in = st.text_input("👤 Usuario", placeholder="Tu usuario")
+            pass_in = st.text_input("🔑 Contraseña", type="password")
+            if st.form_submit_button("ENTRAR"):
+                resultado = procesar_login(codigo_in, user_in, pass_in)
+                if resultado == "ok":
                     st.rerun()
-                else: st.error("❌ Credenciales inválidas.")
+                else:
+                    st.error(resultado)
         st.caption("🔒 Sesión única por usuario. Toda actividad queda registrada.")
     st.stop()
 
-# ==========================================
-# 5. SIDEBAR ORDENADO
-# ==========================================
+if st.session_state.es_superadmin:
+    mf.render_superadmin(cerrar_sesion)
+    st.stop()
+
+# --- Firma activa: licencia vigente, sesión única y cambio de clave obligatorio ---
+try:
+    firma_vigente = mf.obtener_firma(firma_id=_fid())
+    if not firma_vigente:
+        cerrar_sesion()
+        st.session_state.kicked, st.session_state.kicked_reason = True, "Tu firma ya no existe en la plataforma."
+        st.rerun()
+    st.session_state.firma_ctx = firma_vigente
+    licencia = mf.evaluar_licencia(firma_vigente)
+    st.session_state.aviso_licencia = licencia["mensaje"] if licencia["nivel"] in ("por_vencer", "gracia") else ""
+    if licencia["nivel"] in ("bloqueada", "vencida"):
+        mostrar_bloqueo(licencia)
+        st.stop()
+
+    df_u_check = leer_tabla("usuarios", COLS_USR)
+    fila_u = df_u_check[df_u_check["Usuario"].astype(str).str.lower() == str(st.session_state.usuario_actual).lower()]
+    if fila_u.empty:
+        cerrar_sesion()
+        st.session_state.kicked, st.session_state.kicked_reason = True, "Tu usuario fue revocado."
+        st.rerun()
+    db_token = str(fila_u.iloc[0].get("Session_Token", ""))
+    if db_token not in ("", "nan") and db_token != str(st.session_state.get("session_token", "")):
+        cerrar_sesion()
+        st.session_state.kicked, st.session_state.kicked_reason = True, "Sesión iniciada en otro equipo o contraseña restablecida."
+        st.rerun()
+except mf.ErrorDatos as e:
+    st.error(f"🚨 {e}")
+    st.button("🔄 Reintentar", key="reintentar_sesion")
+    st.stop()
+
+if st.session_state.debe_cambiar_clave:
+    st.markdown("<div style='height:4vh'></div>", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1, 1.6, 1])
+    with c2:
+        st.markdown("<div class='login-hero'><div class='seal' style='width:70px;height:70px;font-size:34px;'>🔑</div><h1 style='color:#0A1628 !important;'>Crea tu contraseña</h1></div>", unsafe_allow_html=True)
+        st.info("Por seguridad, debes reemplazar la contraseña temporal antes de continuar. Usa mínimo 8 caracteres con letras y números.")
+        with st.form("form_cambio_obligatorio"):
+            n1 = st.text_input("Nueva contraseña", type="password")
+            n2 = st.text_input("Confirma la nueva contraseña", type="password")
+            if st.form_submit_button("GUARDAR Y ENTRAR"):
+                ok, msg = cambiar_mi_clave("", n1, n2, exigir_actual=False)
+                if ok:
+                    st.session_state.debe_cambiar_clave = False
+                    st.rerun()
+                else:
+                    st.error(msg)
+        st.button("🚪 Cerrar sesión", key="cambio_salir", on_click=cerrar_sesion)
+    st.stop()
+
+# --- Datos de la firma (solo después de validar acceso) ---
+try:
+    df_cli = leer_tabla("clientes", ["Cedula", "Nombre", "Fuerza", "Telefono", "Email", "Deuda_Est", "Ingresos", "Senal", "F_Actualizacion", "Estado", "F_Borrado"])
+    df_fin = leer_tabla("finanzas", ["Cedula", "Honorarios", "Abonado"])
+    df_act = leer_tabla("actuaciones", ["ID_Act", "Cedula", "Fecha", "Tipo", "Juzgado", "Radicado", "Anotacion"])
+    df_log = leer_tabla("logs", ["Timestamp", "Usuario", "Modulo", "Accion"])
+    df_ven = leer_tabla("vencimientos", ["ID_Ven", "Cedula", "Cliente", "Asunto", "Fecha_Limite", "Estado"])
+    df_acr = leer_tabla("acreedores", ["ID_Acr", "Cedula", "Acreedor", "Cuantia", "Clase"])
+    df_aud = leer_tabla("audiencias", ["ID_Aud", "Cedula", "Cliente", "Fecha_Hora", "Motivo"])
+    df_tar = leer_tabla("tareas", ["ID_Tar", "Tarea", "Asignado", "Creador", "Estado", "Fecha"])
+    df_usr = leer_tabla("usuarios", COLS_USR)
+
+    if "Alias" not in df_usr.columns: df_usr["Alias"] = df_usr["Usuario"]
+    if "Avatar_Path" not in df_usr.columns: df_usr["Avatar_Path"] = ""
+    if "Session_Token" not in df_usr.columns: df_usr["Session_Token"] = ""
+
+    hoy = ahora_colombia()
+
+    cambios_bd = False
+    for idx, r in df_cli[df_cli["Estado"] == "Borrado"].iterrows():
+        if pd.notna(r["F_Borrado"]) and str(r["F_Borrado"]).strip() != "":
+            try:
+                if (hoy - datetime.strptime(str(r["F_Borrado"])[:10], "%Y-%m-%d")).days >= 30:
+                    rp = os.path.join(CARP_PAP, f"{r['Cedula']} - {r['Nombre']}")
+                    if os.path.exists(rp): shutil.rmtree(rp)
+                    df_cli = df_cli.drop(idx)
+                    cambios_bd = True
+            except (ValueError, OSError) as e:
+                print(f"⚠️ No se pudo depurar la papelera: {type(e).__name__}")
+    if cambios_bd: guardar_tabla(df_cli, "clientes")
+
+    df_activos = df_cli[df_cli["Estado"] == "Activo"].copy()
+    df_papelera = df_cli[df_cli["Estado"] == "Borrado"].copy()
+
+except mf.ErrorDatos as e:
+    st.error(f"🚨 {e}")
+    st.button("🔄 Reintentar", key="reintentar_datos")
+    st.stop()
+
 # ==========================================
 # 5. CENTRO DE MANDO: barra superior, navegación, búsqueda y notificaciones
 # ==========================================
@@ -1042,10 +1018,6 @@ def mapa_saldos():
     for _, r in df_fin.iterrows():
         saldos[str(r["Cedula"])] = limpiar_num(r["Honorarios"]) - limpiar_num(r["Abonado"])
     return saldos
-
-
-def cerrar_sesion():
-    st.session_state.autenticado = False
 
 
 def abrir_ficha(cc):
@@ -1294,7 +1266,7 @@ with st.container(key="topbar"):
                 df_u_up = df_u_up.astype(object)
                 p_guardado = st.session_state.avatar_path
                 if foto_sub:
-                    p_guardado = os.path.join(CARP_AVATAR, f"{st.session_state.usuario_actual}_{foto_sub.name}")
+                    p_guardado = os.path.join(CARP_AVATAR, f"{_fid()}_{st.session_state.usuario_actual}_{os.path.basename(foto_sub.name)}")
                     with open(p_guardado, "wb") as f:
                         f.write(foto_sub.getbuffer())
                 df_u_up.loc[df_u_up["Usuario"].astype(str) == st.session_state.usuario_actual, "Alias"] = n_alias
@@ -1303,6 +1275,14 @@ with st.container(key="topbar"):
                 st.session_state.alias_actual = n_alias
                 st.session_state.avatar_path = p_guardado
                 st.rerun()
+        with st.expander("🔑 Cambiar mi contraseña"):
+            with st.form("form_mi_clave", clear_on_submit=True):
+                p_act = st.text_input("Contraseña actual", type="password")
+                p_nue = st.text_input("Nueva contraseña", type="password")
+                p_con = st.text_input("Confirma la nueva", type="password")
+                if st.form_submit_button("Cambiar contraseña"):
+                    ok_c, msg_c = cambiar_mi_clave(p_act, p_nue, p_con)
+                    (st.success if ok_c else st.error)(msg_c)
         st.button("🚪 Cerrar sesión", key="b_logout", use_container_width=True, on_click=cerrar_sesion)
 
 # ---------- Navegación en dos niveles ----------
@@ -1348,6 +1328,9 @@ if str(consulta).strip():
                     c1.markdown(f"{etiqueta_tipo} · **{escape(fila[1])}** <span style='color:#667085;font-size:12px;'>cliente: {escape(fila[2])}</span>", unsafe_allow_html=True)
                 c2.button("Abrir ficha", key=f"rs_{tipo}_{j}_{cc_r}", on_click=abrir_ficha, args=(cc_r,), use_container_width=True)
 
+
+if st.session_state.get("aviso_licencia"):
+    st.warning(f"⏳ {st.session_state.aviso_licencia}")
 
 # ==========================================
 # 6. MÓDULOS DE LA APLICACIÓN
@@ -1927,12 +1910,12 @@ elif st.session_state.pagina_actual == 'Vencimientos':
                 cc_v, nom_v = cl_v.split(" - ", 1)
                 n_v = pd.DataFrame([{"ID_Ven": f"VEN-{uuid.uuid4().hex[:8]}", "Cedula": str(cc_v), "Cliente": nom_v, "Asunto": asunto, "Fecha_Limite": str(fecha_v), "Estado": "Activo"}])
                 guardar_tabla(pd.concat([df_ven, n_v], ignore_index=True), "vencimientos")
-                notificar_nuevo_vencimiento(nom_v, asunto, fecha_v)
+                notificar_nuevo_vencimiento(nom_v, asunto, fecha_v, _ctx().get("Email", ""))
                 st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
     if st.button("📣 Enviar alertas de vencimientos próximos", key="btn_alertas_ven"):
-        ok_mail, msg_mail, ok_tg, msg_tg = enviar_alertas_vencimientos(df_ven, hoy)
+        ok_mail, msg_mail, ok_tg, msg_tg = enviar_alertas_vencimientos(df_ven, hoy, _ctx().get("Email", ""))
         if ok_mail:
             st.success(f"📧 {msg_mail}")
         else:
@@ -2012,65 +1995,17 @@ elif st.session_state.pagina_actual == 'Acreedores':
                     st.rerun()
 
 
-# ==========================================
-    # PÁGINA: RASTREADOR JUDICIAL (OSINT LEGAL)
-    # ==========================================
+# --- VERIFICACIÓN EN FUENTES OFICIALES ---
 elif st.session_state.pagina_actual == 'Rastreador':
-        st.markdown("<h2 style='color: #0F172A;'>🔍 Rastreador Judicial & Intel Patrimonial</h2>", unsafe_allow_html=True)
-        st.markdown("---")
-        
-        st.info("💡 **Módulo de Inteligencia:** Conecta en tiempo real con las bases de datos públicas para detectar embargos, multas y procesos ejecutivos antes de radicar la solicitud de insolvencia.")
-        
-        st.markdown("<div class='module-card'>", unsafe_allow_html=True)
-        col_input, col_btn = st.columns([3, 1])
-        with col_input:
-            cedula_rastreo = st.text_input("Número de Cédula a investigar", placeholder="Ej: 1125184282")
-        with col_btn:
-            st.markdown("<br>", unsafe_allow_html=True)
-            btn_buscar = st.button("🚀 Iniciar Escaneo OSINT", use_container_width=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        if btn_buscar:
-            # 1. Validación de seguridad
-            if not cedula_rastreo.strip():
-                st.error("⚠️ Ingrese un número de cédula válido.")
-            else:
-                # 2. Rueda de carga mientras el robot trabaja
-                with st.spinner("Ejecutando extracción en los servidores de la Rama Judicial..."):
-                    
-                    # 3. Llamada al motor que construimos en el Paso 2
-                    df_procesos = consultar_rama_judicial(cedula_rastreo)
-                    
-                    # 4. CASO A: Encontró procesos (La tabla tiene datos)
-                    if isinstance(df_procesos, pd.DataFrame) and not df_procesos.empty:
-                        st.error(f"🚨 ¡ALERTA! **{len(df_procesos)} procesos** encontrados para la CC {cedula_rastreo}.")
-                        st.dataframe(df_procesos, use_container_width=True, hide_index=True)
-                        st.success("✅ Datos extraídos automáticamente. Proceda con los oficios.")
-                        
-                    # 5. CASO B: Está limpio (La tabla está vacía)
-                    elif isinstance(df_procesos, pd.DataFrame) and df_procesos.empty:
-                        st.success(f"✅ **Limpio:** Ningún proceso encontrado para la CC {cedula_rastreo}.")
-                        
-                    # 6. CASO C: El escudo del Estado nos bloqueó la conexión
-                    elif df_procesos in ["WAF_BLOCK", "TIMEOUT"] or str(df_procesos).startswith("ERROR"):
-                        st.error("🛑 Error de conexión con el Servidor del Estado. El escudo de la Rama Judicial bloqueó la petición. Inténtelo más tarde o use los enlaces inferiores.")
-                        
-
-
-        # ENLACES DIRECTOS A PLATAFORMAS EXTERNAS
-        st.markdown("<br>### 🌐 Plataformas Externas de Verificación Inmediata", unsafe_allow_html=True)
-        st.write("Acceda a los portales oficiales con un clic:")
-
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            st.link_button("⚖️ Rama Judicial (Procesos)", "https://consultaprocesos.ramajudicial.gov.co/", use_container_width=True)
-        with c2:
-            st.link_button("🏛️ RUES (Comerciantes)", "https://www.rues.org.co/", use_container_width=True)
-        with c3:
-            st.link_button("🚗 SIMIT (Multas/Tránsito)", "https://www.fcm.org.co/simit/", use_container_width=True)
-        with c4:
-            st.link_button("📋 Procuraduría (Antecedentes)", "https://www.procuraduria.gov.co/Pages/Generacion-de-Antecedentes.aspx", use_container_width=True)
-            
+    st.markdown("<h1>Verificación en fuentes oficiales</h1><p class='page-sub'>Consulta los portales públicos antes de radicar y deja constancia de lo que encontraste en las actuaciones del expediente.</p>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown("<p class='card-title'>Portales oficiales</p>", unsafe_allow_html=True)
+        v1, v2, v3, v4 = st.columns(4)
+        v1.link_button("⚖️ Rama Judicial (procesos)", "https://consultaprocesos.ramajudicial.gov.co/", use_container_width=True)
+        v2.link_button("🏛️ RUES (comerciantes)", "https://www.rues.org.co/", use_container_width=True)
+        v3.link_button("🚗 SIMIT (multas y tránsito)", "https://www.fcm.org.co/simit/", use_container_width=True)
+        v4.link_button("📋 Procuraduría (antecedentes)", "https://www.procuraduria.gov.co/Pages/Generacion-de-Antecedentes.aspx", use_container_width=True)
+    st.markdown("<div class='aviso'><b>Cómo trabajar:</b> consulta cada portal con la cédula del deudor, descarga o captura el resultado y súbelo a la Bóveda del expediente (carpeta Juzgado o Financiero). Registra la fecha y el resultado en <i>Seguimiento procesal</i>.</div>", unsafe_allow_html=True)
 
 # --- NUEVO: TABLERO KANBAN ---
 elif st.session_state.pagina_actual == 'Kanban':
@@ -2613,105 +2548,100 @@ elif st.session_state.pagina_actual == 'Finanzas':
 
 # --- 11. USUARIOS ---
 elif st.session_state.pagina_actual == 'Usuarios':
-    if st.session_state.rol_actual != "Administrador (Jefa)": st.error("⛔ DENEGADO")
+    if not es_jefa():
+        st.error("⛔ Solo la administradora de la firma puede gestionar usuarios.")
     else:
-        st.markdown("<h1>👥 Gestión de Accesos y Seguridad</h1>", unsafe_allow_html=True)
-        
-        st.markdown("<div class='module-card'>", unsafe_allow_html=True)
-        st.markdown("<h3 style='font-size: 18px; margin-bottom: 10px;'>📋 Usuarios Activos en el Sistema</h3>", unsafe_allow_html=True)
-        df_mostrar = df_usr[["Usuario", "Alias", "Rol", "Creador"]].copy()
-        st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+        firma_u = _ctx()
+        max_u = max(mf._entero(firma_u.get("Max_Usuarios"), 3), 1)
+        df_u_pag = leer_tabla("usuarios", COLS_USR).astype(object)
+        usados = len(df_u_pag)
+        st.markdown(f"<h1>Accesos y usuarios</h1><p class='page-sub'>Crea las cuentas de tu equipo. Tu plan incluye hasta {max_u} usuarios; hoy usas {usados}.</p>", unsafe_allow_html=True)
+        st.progress(min(usados / max_u, 1.0), text=f"{usados} de {max_u} usuarios")
 
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("<div class='module-card module-card-blue'>", unsafe_allow_html=True)
-            st.markdown("<h3 style='font-size: 18px;'>➕ Crear Nuevo Usuario</h3>", unsafe_allow_html=True)
-            with st.form("form_nuevo_usr"):
-                n_user = st.text_input("Usuario de Login (Ej: mario_abogado)")
-                n_pass = st.text_input("Contraseña", type="password")
-                n_alias = st.text_input("Nombre a mostrar (Alias / Nombre Real)")
-                n_rol = st.selectbox("Rol en la plataforma", ["Abogado / Operativo", "Administrador (Jefa)"])
-                if st.form_submit_button("CREAR CREDENCIAL"):
-                    if n_user and n_pass:
-                        if str(n_user) in df_usr["Usuario"].astype(str).values:
-                            st.error("❌ Ese usuario ya existe.")
-                        else:
-                            alias_final = n_alias if n_alias else n_user
-                            nu = pd.DataFrame([{"Usuario": str(n_user), "Password": str(n_pass), "Rol": str(n_rol), "Creador": str(st.session_state.usuario_actual), "Alias": str(alias_final), "Avatar_Path": "", "Session_Token": ""}])
-                            guardar_tabla(pd.concat([df_usr, nu], ignore_index=True), "usuarios")
-                            st.success(f"Usuario {n_user} creado con éxito.")
-                            time.sleep(1.5)
-                            st.rerun()
-                    else:
-                        st.error("⚠ Usuario y Contraseña son obligatorios.")
-            st.markdown("</div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("<p class='card-title'>Usuarios de tu firma</p>", unsafe_allow_html=True)
+            vista_u = df_u_pag[["Usuario", "Alias", "Rol", "Cambiar_Clave"]].copy()
+            vista_u.columns = ["Usuario", "Nombre", "Rol", "Debe cambiar clave"]
+            st.dataframe(vista_u, use_container_width=True, hide_index=True)
 
-        with col2:
-            st.markdown("<div class='module-card module-card-gold'>", unsafe_allow_html=True)
-            st.markdown("<h3 style='font-size: 18px;'>✏️ Modificar o Eliminar Cuenta</h3>", unsafe_allow_html=True)
-            
-            usr_sel = st.selectbox("Selecciona un usuario a gestionar:", df_usr["Usuario"].tolist())
-            
-            if usr_sel:
-                usr_data = df_usr[df_usr["Usuario"] == usr_sel].iloc[0]
+        col_n, col_e = st.columns(2)
+        with col_n:
+            with st.container(border=True):
+                st.markdown("<p class='card-title'>➕ Crear usuario</p>", unsafe_allow_html=True)
+                if usados >= max_u:
+                    st.warning(f"Llegaste al límite de {max_u} usuarios de tu plan. Para agregar más, comunícate con soporte.")
+                else:
+                    with st.form("form_nuevo_usr", clear_on_submit=True):
+                        n_user = st.text_input("Usuario de acceso", help="3 a 30 caracteres: letras minúsculas, números, punto o guion. Ej.: mgomez")
+                        n_alias = st.text_input("Nombre a mostrar")
+                        n_rol = st.selectbox("Rol", mf.ROLES, index=1)
+                        n_pass = st.text_input("Contraseña temporal", type="password", help="La persona deberá cambiarla en su primer ingreso.")
+                        if st.form_submit_button("CREAR USUARIO"):
+                            usuario_nuevo = n_user.strip().lower()
+                            motivo = mf.validar_clave_nueva(n_pass)
+                            if not re.fullmatch(r"[a-z0-9._-]{3,30}", usuario_nuevo):
+                                st.error("El usuario debe tener de 3 a 30 caracteres: letras minúsculas, números, punto o guion.")
+                            elif usuario_nuevo in df_u_pag["Usuario"].astype(str).str.lower().tolist():
+                                st.error("Ese usuario ya existe en tu firma.")
+                            elif motivo:
+                                st.error(motivo)
+                            else:
+                                nuevo_u = pd.DataFrame([{"Usuario": usuario_nuevo, "Password": mf.hash_password(n_pass), "Rol": n_rol,
+                                                         "Creador": st.session_state.usuario_actual, "Alias": n_alias.strip() or usuario_nuevo,
+                                                         "Avatar_Path": "", "Session_Token": "", "Cambiar_Clave": "Si"}])
+                                guardar_tabla(pd.concat([df_u_pag, nuevo_u], ignore_index=True), "usuarios")
+                                registrar_log("SEGURIDAD", f"Creó el usuario {usuario_nuevo} ({n_rol})")
+                                st.success(f"Usuario {usuario_nuevo} creado. Entrégale su contraseña temporal por un canal seguro.")
+                                time.sleep(1.2)
+                                st.rerun()
+
+        with col_e:
+            with st.container(border=True):
+                st.markdown("<p class='card-title'>✏️ Modificar o eliminar</p>", unsafe_allow_html=True)
+                usr_sel = st.selectbox("Usuario", df_u_pag["Usuario"].astype(str).tolist(), key="sel_usr_edit")
+                fila_e = df_u_pag[df_u_pag["Usuario"].astype(str) == usr_sel].iloc[0]
                 with st.form("form_edit_usr"):
-                    e_alias = st.text_input("Cambiar Nombre / Alias", value=str(usr_data.get("Alias", usr_sel)))
-                    e_pass = st.text_input("Nueva Contraseña (Dejar en blanco para no cambiar)", type="password")
-                    idx_rol = 0 if usr_data["Rol"] == "Abogado / Operativo" else 1
-                    e_rol = st.selectbox("Cambiar Rol", ["Abogado / Operativo", "Administrador (Jefa)"], index=idx_rol)
-                    
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    col_btn1, col_btn2 = st.columns(2)
-                    
-                    with col_btn1:
-                        btn_guardar = st.form_submit_button("💾 GUARDAR CAMBIOS")
-                    with col_btn2:
-                        st.markdown("""<style>div[data-testid="stFormSubmitButton"] button:contains('ELIMINAR') { background: #EF4444 !important; border-color: #EF4444 !important; color: white !important; }</style>""", unsafe_allow_html=True)
-                        btn_eliminar = st.form_submit_button("🗑️ ELIMINAR USUARIO")
-                        
-                    if btn_guardar:
-                        df_usr = df_usr.astype(str)
-                        
-                        df_usr.loc[df_usr["Usuario"] == str(usr_sel), "Alias"] = str(e_alias)
-                        df_usr.loc[df_usr["Usuario"] == str(usr_sel), "Rol"] = str(e_rol)
-                        
-                        clave_cambiada = False
-                        if e_pass.strip(): 
-                            df_usr.loc[df_usr["Usuario"] == str(usr_sel), "Password"] = str(e_pass)
-                            df_usr.loc[df_usr["Usuario"] == str(usr_sel), "Session_Token"] = "REVOCADO_POR_SEGURIDAD"
-                            clave_cambiada = True
-                            
-                        guardar_tabla(df_usr, "usuarios")
-                        registrar_log("SEGURIDAD", f"Actualizó credenciales de: {usr_sel}")
-                        
-                        if clave_cambiada:
-                            st.success(f"✅ Contraseña cambiada. La sesión de '{usr_sel}' ha sido cerrada forzosamente.")
-                            if usr_sel == st.session_state.usuario_actual:
-                                st.session_state.autenticado = False
-                                st.session_state.kicked = True
-                                st.session_state.kicked_reason = "Tu contraseña fue actualizada. Inicia sesión nuevamente por seguridad."
-                        else:
-                            st.success("✅ Cambios guardados correctamente.")
-                            
-                        time.sleep(2.5)
+                    e_alias = st.text_input("Nombre a mostrar", value=str(fila_e["Alias"]))
+                    e_rol = st.selectbox("Rol", mf.ROLES, index=mf.ROLES.index(fila_e["Rol"]) if fila_e["Rol"] in mf.ROLES else 1)
+                    e_pass = st.text_input("Nueva contraseña (déjala vacía para no cambiarla)", type="password")
+                    b1, b2 = st.columns(2)
+                    guardar_u = b1.form_submit_button("💾 GUARDAR")
+                    borrar_u = b2.form_submit_button("🗑️ ELIMINAR")
+                admins = df_u_pag[df_u_pag["Rol"].astype(str) == mf.ROLES[0]]
+                es_ultimo_admin = (str(fila_e["Rol"]) == mf.ROLES[0]) and len(admins) <= 1
+                if guardar_u:
+                    if es_ultimo_admin and e_rol != mf.ROLES[0]:
+                        st.error("No puedes quitarle el rol de administradora a la única administradora de la firma.")
+                    elif e_pass and mf.validar_clave_nueva(e_pass):
+                        st.error(mf.validar_clave_nueva(e_pass))
+                    else:
+                        m_e = df_u_pag["Usuario"].astype(str) == usr_sel
+                        df_u_pag.loc[m_e, "Alias"] = e_alias.strip() or usr_sel
+                        df_u_pag.loc[m_e, "Rol"] = e_rol
+                        if e_pass:
+                            df_u_pag.loc[m_e, "Password"] = mf.hash_password(e_pass)
+                            df_u_pag.loc[m_e, "Cambiar_Clave"] = "Si"
+                            df_u_pag.loc[m_e, "Session_Token"] = "REVOCADA"
+                        guardar_tabla(df_u_pag, "usuarios")
+                        registrar_log("SEGURIDAD", f"Actualizó al usuario {usr_sel}" + (" y restableció su contraseña" if e_pass else ""))
+                        st.success("Cambios guardados." + (" Su sesión actual se cerrará." if e_pass else ""))
+                        if usr_sel.lower() == str(st.session_state.usuario_actual).lower():
+                            e_alias_final = e_alias.strip() or usr_sel
+                            st.session_state.alias_actual = e_alias_final
+                        time.sleep(1.2)
                         st.rerun()
-                        
-                    if btn_eliminar:
-                        if usr_sel == st.session_state.usuario_actual:
-                            st.error("❌ ¡Peligro! No puedes eliminar tu propia cuenta mientras la usas.")
-                        elif usr_sel == "admin" and len(df_usr[df_usr["Rol"] == "Administrador (Jefa)"]) == 1:
-                            st.error("❌ No puedes eliminar al único Administrador del sistema.")
-                        else:
-                            df_usr = df_usr[df_usr["Usuario"] != usr_sel]
-                            guardar_tabla(df_usr, "usuarios")
-                            registrar_log("SEGURIDAD", f"Eliminó al usuario: {usr_sel}")
-                            st.success(f"🗑️ Usuario {usr_sel} eliminado permanentemente.")
-                            time.sleep(1.5)
-                            st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
-            
+                if borrar_u:
+                    if usr_sel.lower() == str(st.session_state.usuario_actual).lower():
+                        st.error("No puedes eliminar tu propia cuenta mientras la usas.")
+                    elif es_ultimo_admin:
+                        st.error("No puedes eliminar a la única administradora de la firma.")
+                    else:
+                        guardar_tabla(df_u_pag[df_u_pag["Usuario"].astype(str) != usr_sel], "usuarios")
+                        registrar_log("SEGURIDAD", f"Eliminó al usuario {usr_sel}")
+                        st.success(f"Usuario {usr_sel} eliminado.")
+                        time.sleep(1.2)
+                        st.rerun()
+
 # --- 12. SISTEMA ---
 elif st.session_state.pagina_actual == 'Sistema':
     if st.session_state.rol_actual != "Administrador (Jefa)": st.error("⛔ DENEGADO")
